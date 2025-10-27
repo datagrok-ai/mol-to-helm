@@ -61,8 +61,6 @@ class AdvancedTerminalNormalizer:
 class AdvancedBondDetector:
     def __init__(self):
         self.peptide_bond = Chem.MolFromSmarts('[C;X3](=[O;X1])-[N;X3]')
-        self.ester_bond = Chem.MolFromSmarts('[C;X3](=[O;X1])-[O;X2]')
-        self.urethane_bond = Chem.MolFromSmarts('[O;X2]-[C;X3](=[O;X1])-[N;X3]')
         self.disulfide_bond = Chem.MolFromSmarts('[S;X2]-[S;X2]')
 
     def find_cleavable_bonds(self, mol: Chem.Mol):
