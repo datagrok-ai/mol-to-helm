@@ -4,12 +4,23 @@ import os
 from pipeline import mol_to_helm
 
 
-def test_linear_peptides():
-    print("=== TESTING LINEAR PEPTIDES ===")
+def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=False, extra_column=None):
+    """
+    Generic function to test peptide conversion from molecule to HELM notation.
+    
+    Args:
+        filename: Name of the CSV file in test-sets folder
+        test_name: Display name for the test (e.g., "LINEAR PEPTIDES")
+        molfile_column: Name of the column containing molfile data
+        helm_column: Name of the column containing reference HELM notation
+        is_cyclic: Whether the peptides are cyclic (default: False)
+        extra_column: Optional column name to display additional info (e.g., BILN notation)
+    """
+    print(f"\n=== TESTING {test_name.upper()} ===")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
-    table_path = os.path.join(project_root, 'test-sets', 'HELM_LINEAR.csv')
+    table_path = os.path.join(project_root, 'test-sets', filename)
 
     if not os.path.exists(table_path):
         print("File not found")
@@ -22,13 +33,18 @@ def test_linear_peptides():
     total = len(table)
 
     for index in range(len(table)):
-        molfile = table['molfile(HELM)'][index]
-        true_helm = table['HELM'][index]
+        molfile = table[molfile_column][index]
+        true_helm = table[helm_column][index]
 
         mol = Chem.MolFromMolBlock(molfile)
         if mol:
-            predicted_helm = mol_to_helm(mol, is_cyclic=False)
+            predicted_helm = mol_to_helm(mol, is_cyclic=is_cyclic)
 
+            # Display extra column if specified (e.g., BILN notation)
+            if extra_column and extra_column in table.columns:
+                extra_data = table[extra_column][index]
+                print(f"{index + 1:>4}. {extra_column}:      {extra_data}")
+            
             print(f"{index + 1:>4}. Refered:   {true_helm}")
             print(f"      Generated: {predicted_helm}")
             
@@ -38,108 +54,39 @@ def test_linear_peptides():
                 failed_tests.append(index + 1)
     
     print("\n" + "=" * 60)
-    print(f"LINEAR PEPTIDES SUMMARY:")
+    print(f"{test_name.upper()} SUMMARY:")
     print(f"Passed: {passed}/{total} ({passed/total*100:.1f}%)")
     if failed_tests:
         print(f"Failed tests: {failed_tests}")
     else:
         print("All tests passed! ✓")
     print("=" * 60)
-
-
-
-def test_biln_peptides():
-    print("\n=== TESTING BILN PEPTIDES ===")
-
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    table_path = os.path.join(project_root, 'test-sets', 'BILN_W_HELM.csv')
-
-    if not os.path.exists(table_path):
-        print("File not found")
-        return
-
-    table = pd.read_csv(table_path)
-    
-    passed = 0
-    failed_tests = []
-    total = len(table)
-
-    for index in range(len(table)):
-        molfile = table['molfile(BILN)'][index]
-        true_helm = table['helm(BILN)'][index]
-        biln_notation = table['BILN'][index]
-
-        mol = Chem.MolFromMolBlock(molfile)
-        if mol:
-            predicted_helm = mol_to_helm(mol, is_cyclic=True)  # BILN typically represents cyclic peptides
-
-            print(f"{index + 1:>4}. BILN:      {biln_notation}")
-            print(f"      Refered:   {true_helm}")
-            print(f"      Generated: {predicted_helm}")
-            
-            if true_helm == predicted_helm:
-                passed += 1
-            else:
-                failed_tests.append(index + 1)
-    
-    print("\n" + "=" * 60)
-    print(f"BILN PEPTIDES SUMMARY:")
-    print(f"Passed: {passed}/{total} ({passed/total*100:.1f}%)")
-    if failed_tests:
-        print(f"Failed tests: {failed_tests}")
-    else:
-        print("All tests passed! ✓")
-    print("=" * 60)
-
-
-
-def test_cyclic_peptides():
-    print("\n=== TESTING CYCLIC PEPTIDES ===")
-
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    table_path = os.path.join(project_root, 'test-sets', 'HELM_cyclic.csv')
-
-    if not os.path.exists(table_path):
-        print("File not found")
-        return
-
-    table = pd.read_csv(table_path)
-    
-    passed = 0
-    failed_tests = []
-    total = len(table)
-
-    for index in range(len(table)):
-        molfile = table['molfile(sequence)'][index]
-        true_helm = table['sequence'][index]
-
-        mol = Chem.MolFromMolBlock(molfile)
-        if mol:
-            predicted_helm = mol_to_helm(mol, is_cyclic=True)
-
-            print(f"{index + 1:>4}. Refered:   {true_helm}")
-            print(f"      Generated: {predicted_helm}")
-            
-            if true_helm == predicted_helm:
-                passed += 1
-            else:
-                failed_tests.append(index + 1)
-    
-    print("\n" + "=" * 60)
-    print(f"CYCLIC PEPTIDES SUMMARY:")
-    print(f"Passed: {passed}/{total} ({passed/total*100:.1f}%)")
-    if failed_tests:
-        print(f"Failed tests: {failed_tests}")
-    else:
-        print("All tests passed! ✓")
-    print("=" * 60)
-
-
-
 
 if __name__ == "__main__":
-    test_linear_peptides()
-    #test_cyclic_peptides()
-    #test_biln_peptides()
+    # Test linear peptides
+    test_peptides(
+        filename='HELM_LINEAR.csv',
+        test_name='Linear Peptides',
+        molfile_column='molfile(HELM)',
+        helm_column='HELM',
+        is_cyclic=False
+    )
+    
+    # Test cyclic peptides
+    test_peptides(
+        filename='HELM_cyclic.csv',
+        test_name='Cyclic Peptides',
+        molfile_column='molfile(sequence)',
+        helm_column='sequence',
+        is_cyclic=True
+    )
+    
+    # Test BILN peptides
+    test_peptides(
+        filename='BILN_W_HELM.csv',
+        test_name='BILN Peptides',
+        molfile_column='molfile(BILN)',
+        helm_column='helm(BILN)',
+        is_cyclic=True,
+        extra_column='BILN'
+    )
