@@ -6,6 +6,7 @@ from pipeline import mol_to_helm
 
 def test_linear_peptides():
     print("=== TESTING LINEAR PEPTIDES ===")
+    # This is a test comment to show git changes
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
