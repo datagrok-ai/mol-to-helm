@@ -1,7 +1,6 @@
 import pandas as pd
-from rdkit import Chem
 import os
-from pipeline import mol_to_helm, preload_library
+from pipeline import convert_molecules_batch, preload_library
 
 
 def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=False, extra_column=None):
@@ -28,18 +27,20 @@ def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=Fa
 
     table = pd.read_csv(table_path)
     
+    # Extract molfiles and reference HELM notations
+    molfiles = table[molfile_column].tolist()
+    reference_helms = table[helm_column].tolist()
+    
+    # Convert all molecules in batch
+    results = convert_molecules_batch(molfiles, is_cyclic=is_cyclic)
+    
+    # Process and display results
     passed = 0
     failed_tests = []
     total = len(table)
 
-    for index in range(len(table)):
-        molfile = table[molfile_column][index]
-        true_helm = table[helm_column][index]
-
-        mol = Chem.MolFromMolBlock(molfile)
-        if mol:
-            predicted_helm = mol_to_helm(mol, is_cyclic=is_cyclic)
-
+    for index, ((success, predicted_helm), true_helm) in enumerate(zip(results, reference_helms)):
+        if success:
             # Display extra column if specified (e.g., BILN notation)
             if extra_column and extra_column in table.columns:
                 extra_data = table[extra_column][index]
@@ -52,6 +53,15 @@ def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=Fa
                 passed += 1
             else:
                 failed_tests.append(index + 1)
+        else:
+            # Molecule conversion failed
+            if extra_column and extra_column in table.columns:
+                extra_data = table[extra_column][index]
+                print(f"{index + 1:>4}. {extra_column}:      {extra_data}")
+            
+            print(f"{index + 1:>4}. Refered:   {true_helm}")
+            print(f"      Generated: FAILED - {predicted_helm if predicted_helm else 'Could not parse molecule'}")
+            failed_tests.append(index + 1)
     
     print("\n" + "=" * 60)
     print(f"{test_name.upper()} SUMMARY:")
