@@ -6,7 +6,6 @@ from pipeline import mol_to_helm
 
 def test_linear_peptides():
     print("=== TESTING LINEAR PEPTIDES ===")
-    # This is a test comment to show git changes
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
@@ -17,6 +16,10 @@ def test_linear_peptides():
         return
 
     table = pd.read_csv(table_path)
+    
+    passed = 0
+    failed_tests = []
+    total = len(table)
 
     for index in range(len(table)):
         molfile = table['molfile(HELM)'][index]
@@ -26,8 +29,22 @@ def test_linear_peptides():
         if mol:
             predicted_helm = mol_to_helm(mol, is_cyclic=False)
 
-            print(f"{index + 1}. Refered:  {true_helm}")
-            print(f"   Generated: {predicted_helm}")
+            print(f"{index + 1:>4}. Refered:   {true_helm}")
+            print(f"      Generated: {predicted_helm}")
+            
+            if true_helm == predicted_helm:
+                passed += 1
+            else:
+                failed_tests.append(index + 1)
+    
+    print("\n" + "=" * 60)
+    print(f"LINEAR PEPTIDES SUMMARY:")
+    print(f"Passed: {passed}/{total} ({passed/total*100:.1f}%)")
+    if failed_tests:
+        print(f"Failed tests: {failed_tests}")
+    else:
+        print("All tests passed! ✓")
+    print("=" * 60)
 
 
 
@@ -43,6 +60,10 @@ def test_cyclic_peptides():
         return
 
     table = pd.read_csv(table_path)
+    
+    passed = 0
+    failed_tests = []
+    total = len(table)
 
     for index in range(len(table)):
         molfile = table['molfile(sequence)'][index]
@@ -52,8 +73,22 @@ def test_cyclic_peptides():
         if mol:
             predicted_helm = mol_to_helm(mol, is_cyclic=True)
 
-            print(f"{index + 1}. Refered:  {true_helm}")
-            print(f"   Generated: {predicted_helm}")
+            print(f"{index + 1:>4}. Refered:   {true_helm}")
+            print(f"      Generated: {predicted_helm}")
+            
+            if true_helm == predicted_helm:
+                passed += 1
+            else:
+                failed_tests.append(index + 1)
+    
+    print("\n" + "=" * 60)
+    print(f"CYCLIC PEPTIDES SUMMARY:")
+    print(f"Passed: {passed}/{total} ({passed/total*100:.1f}%)")
+    if failed_tests:
+        print(f"Failed tests: {failed_tests}")
+    else:
+        print("All tests passed! ✓")
+    print("=" * 60)
 
 
 
