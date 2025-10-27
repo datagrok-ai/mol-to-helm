@@ -18,13 +18,25 @@ def _load_monomer_library():
         if not os.path.exists(library_path):
             return None
 
+        print("Loading monomer library...")
         _MONOMER_LIBRARY = MonomerLibrary()
         _MONOMER_LIBRARY.load_from_helm_json(library_path)
 
         if not _MONOMER_LIBRARY.monomers:
             return None
+        
+        print(f"Monomer library loaded: {len(_MONOMER_LIBRARY.monomers)} monomers")
 
     return _MONOMER_LIBRARY
+
+
+def preload_library():
+    """
+    Preload the monomer library to ensure it's loaded once at the start.
+    Returns True if successful, False otherwise.
+    """
+    library = _load_monomer_library()
+    return library is not None
 
 
 def mol_to_helm(mol: Chem.Mol, is_cyclic: bool = False) -> str:

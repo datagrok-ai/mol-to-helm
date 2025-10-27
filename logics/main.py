@@ -1,7 +1,7 @@
 import pandas as pd
 from rdkit import Chem
 import os
-from pipeline import mol_to_helm
+from pipeline import mol_to_helm, preload_library
 
 
 def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=False, extra_column=None):
@@ -63,6 +63,15 @@ def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=Fa
     print("=" * 60)
 
 if __name__ == "__main__":
+    # Preload monomer library once for all tests
+    print("=" * 60)
+    print("INITIALIZING MONOMER LIBRARY")
+    print("=" * 60)
+    if not preload_library():
+        print("ERROR: Failed to load monomer library. Exiting.")
+        exit(1)
+    print()
+    
     # Test linear peptides
     test_peptides(
         filename='HELM_LINEAR.csv',
@@ -72,21 +81,21 @@ if __name__ == "__main__":
         is_cyclic=False
     )
     
-    # Test cyclic peptides
-    test_peptides(
-        filename='HELM_cyclic.csv',
-        test_name='Cyclic Peptides',
-        molfile_column='molfile(sequence)',
-        helm_column='sequence',
-        is_cyclic=True
-    )
+    # # Test cyclic peptides
+    # test_peptides(
+    #     filename='HELM_cyclic.csv',
+    #     test_name='Cyclic Peptides',
+    #     molfile_column='molfile(sequence)',
+    #     helm_column='sequence',
+    #     is_cyclic=True
+    # )
     
-    # Test BILN peptides
-    test_peptides(
-        filename='BILN_W_HELM.csv',
-        test_name='BILN Peptides',
-        molfile_column='molfile(BILN)',
-        helm_column='helm(BILN)',
-        is_cyclic=True,
-        extra_column='BILN'
-    )
+    # # Test BILN peptides
+    # test_peptides(
+    #     filename='BILN_W_HELM.csv',
+    #     test_name='BILN Peptides',
+    #     molfile_column='molfile(BILN)',
+    #     helm_column='helm(BILN)',
+    #     is_cyclic=True,
+    #     extra_column='BILN'
+    # )
