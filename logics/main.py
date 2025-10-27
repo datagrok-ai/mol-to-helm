@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from pipeline import convert_molecules_batch, preload_library
+from pipeline import convert_molecules_batch
 
 
 def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=False, extra_column=None):
@@ -73,15 +73,6 @@ def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=Fa
     print("=" * 60)
 
 if __name__ == "__main__":
-    # Preload monomer library once for all tests
-    print("=" * 60)
-    print("INITIALIZING MONOMER LIBRARY")
-    print("=" * 60)
-    if not preload_library():
-        print("ERROR: Failed to load monomer library. Exiting.")
-        exit(1)
-    print()
-    
     # Test linear peptides
     test_peptides(
         filename='HELM_LINEAR.csv',

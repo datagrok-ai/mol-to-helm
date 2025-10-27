@@ -117,6 +117,15 @@ def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
         List of tuples: (success: bool, helm_notation: str)
         success is True if molecule was successfully converted, False otherwise
     """
+    # Ensure library and processors are initialized before batch processing
+    global _PROCESSOR
+    if _PROCESSOR is None:
+        print("Initializing monomer library and processors...")
+        if not preload_library():
+            print("ERROR: Failed to load monomer library")
+            return [(False, "Library initialization failed") for _ in molfiles]
+        print()
+    
     # Use shared processor instances
     processor, matcher, helm_generator = _get_processors()
     if not processor:
