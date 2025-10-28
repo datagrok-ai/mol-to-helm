@@ -2,62 +2,6 @@ from rdkit import Chem
 from fragment_graph import FragmentGraph, FragmentNode, FragmentLink, LinkageType
 
 
-class TerminalNormalizer:
-    def __init__(self):
-        self.carboxyl_pattern = Chem.MolFromSmarts('[C;X3](=[O;X1])[O;H1]')
-        self.amide_pattern = Chem.MolFromSmarts('[C;X3](=[O;X1])[N;X3]')
-        self.primary_amine = Chem.MolFromSmarts('[N;X3;H2]')
-
-    def normalize_for_library(self, mol: Chem.Mol, is_c_terminal: bool = False) -> Chem.Mol:
-        try:
-            if mol is None:
-                return mol
-
-            mol_copy = Chem.Mol(mol)
-
-            if is_c_terminal:
-                mol_copy = self._convert_carboxyl_to_amide_like(mol_copy)
-
-            mol_copy = self._normalize_primary_amine(mol_copy)
-
-            smiles = Chem.MolToSmiles(mol_copy, canonical=True)
-            return Chem.MolFromSmiles(smiles)
-
-        except Exception:
-            return mol
-
-    def _convert_carboxyl_to_amide_like(self, mol: Chem.Mol) -> Chem.Mol:
-        try:
-            matches = mol.GetSubstructMatches(self.carboxyl_pattern)
-            if not matches:
-                return mol
-
-            for match in matches:
-                if len(match) >= 2:
-                    c_atom_idx = match[0]
-                    o_atom_idx = match[1]
-
-                    c_atom = mol.GetAtomWithIdx(c_atom_idx)
-                    o_atom = mol.GetAtomWithIdx(o_atom_idx)
-
-                    if o_atom.GetTotalNumHs() == 1:
-                        emol = Chem.EditableMol(mol)
-                        emol.RemoveAtom(o_atom_idx)
-                        new_mol = emol.GetMol()
-                        return new_mol
-
-            return mol
-        except Exception:
-            return mol
-
-    def _normalize_primary_amine(self, mol: Chem.Mol) -> Chem.Mol:
-        try:
-            smiles = Chem.MolToSmiles(mol, canonical=True)
-            return Chem.MolFromSmiles(smiles)
-        except Exception:
-            return mol
-
-
 class BondDetector:
     #GENERALIZATION ITEM: BOND PATTERNS SHOULD BE DERIVED FROM LIBRARY
     def __init__(self):
@@ -179,7 +123,6 @@ class FragmentProcessor:
     def __init__(self, monomer_library):
         self.monomer_library = monomer_library
         self.bond_detector = BondDetector()
-        self.normalizer = TerminalNormalizer()
 
     def process_molecule(self, mol: Chem.Mol, is_cyclic: bool = False) -> FragmentGraph:
         """
@@ -244,13 +187,12 @@ class FragmentProcessor:
                 if clean_frag and clean_frag.GetNumAtoms() >= 3:
                     is_c_terminal = (i == len(fragments) - 1) and not is_cyclic
                     is_n_terminal = (i == 0) and not is_cyclic
-                    normalized_frag = self.normalizer.normalize_for_library(clean_frag, is_c_terminal)
-                    if normalized_frag:
-                        node = FragmentNode(i, normalized_frag)
-                        node.is_c_terminal = is_c_terminal
-                        node.is_n_terminal = is_n_terminal
-                        graph.add_node(node)
-                        fragment_nodes.append((i, node))
+                    # No normalization! Use fragment as-is
+                    node = FragmentNode(i, clean_frag)
+                    node.is_c_terminal = is_c_terminal
+                    node.is_n_terminal = is_n_terminal
+                    graph.add_node(node)
+                    fragment_nodes.append((i, node))
 
             # Create links between fragments based on cleaved bonds
             # For sequential peptide bonds

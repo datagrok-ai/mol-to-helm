@@ -106,10 +106,15 @@ def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
             # Process molecule into fragment graph
             graph = processor.process_molecule(mol, is_cyclic=is_cyclic)
             
-            # Match each fragment to a monomer
+            # Match each fragment to a monomer using graph topology
             unknown_count = 0
             for node_id, node in graph.nodes.items():
-                monomer = matcher.find_exact_match(node.mol)
+                # Count connections for this node
+                neighbors = graph.get_neighbors(node_id)
+                num_connections = len(neighbors)
+                
+                # Find matching monomer
+                monomer = matcher.find_exact_match(node.mol, num_connections)
                 if monomer:
                     node.monomer = monomer
                 else:
