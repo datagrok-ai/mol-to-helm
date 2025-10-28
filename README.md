@@ -110,7 +110,6 @@ print(helm_notation)
 - Support for cyclic peptides
 - Monomer library based on HELM Core Library
 - Fragment detection and matching
-- Fingerprint-based similarity matching
 
 ## Requirements
 - rdkit>=2023.3.1

@@ -1,5 +1,4 @@
 from rdkit import Chem
-from rdkit.Chem import AllChem, DataStructs
 from rdkit import RDLogger
 from collections import defaultdict
 import json
@@ -26,7 +25,6 @@ class MonomerLibrary:
         self.smiles_to_monomer = {}
         self.name_to_monomer = {}
         self.symbol_to_monomer = {}
-        self.fingerprint_cache = {}
 
     def load_from_helm_json(self, json_path: str) -> None:
         if not os.path.exists(json_path):
@@ -48,9 +46,6 @@ class MonomerLibrary:
 
                     if monomer.smiles_canonical:
                         self.smiles_to_monomer[monomer.smiles_canonical] = monomer
-                        self.fingerprint_cache[monomer.symbol] = AllChem.GetMorganFingerprintAsBitVect(
-                            monomer.mol, 2, nBits=1024
-                        )
 
                     clean_name = monomer.name.lower().replace(" ", "").replace("-", "").replace("_", "")
                     self.name_to_monomer[clean_name] = monomer
@@ -123,6 +118,3 @@ class MonomerLibrary:
 
     def find_monomer_by_symbol(self, symbol: str):
         return self.symbol_to_monomer.get(symbol)
-
-    def get_fingerprint(self, symbol: str):
-        return self.fingerprint_cache.get(symbol)

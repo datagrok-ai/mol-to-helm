@@ -1,5 +1,4 @@
 from rdkit import Chem
-from rdkit.Chem import AllChem, DataStructs
 import os
 from monomer_library import MonomerData, MonomerLibrary
 
@@ -206,7 +205,6 @@ class PrecisionMonomerMatcher:
     def __init__(self, monomer_library: MonomerLibrary):
         self.monomer_library = monomer_library
         self.hardcoded_mappings = self._create_precision_mappings()
-        self.similarity_threshold = 0.8
 
     def _create_precision_mappings(self):
         return {
@@ -337,32 +335,7 @@ class PrecisionMonomerMatcher:
         if exact_match:
             return exact_match
 
-        return self._find_advanced_match(fragment)
-
-    def _find_advanced_match(self, fragment: Chem.Mol):
-        try:
-            frag_fp = AllChem.GetMorganFingerprintAsBitVect(fragment, 2, nBits=1024)
-            best_match = None
-            best_similarity = 0.0
-
-            for symbol, monomer in self.monomer_library.monomers.items():
-                if not monomer.mol:
-                    continue
-
-                monomer_fp = self.monomer_library.get_fingerprint(symbol)
-                if monomer_fp is None:
-                    continue
-
-                similarity = DataStructs.TanimotoSimilarity(frag_fp, monomer_fp)
-
-                if similarity > best_similarity and similarity > self.similarity_threshold:
-                    best_similarity = similarity
-                    best_match = monomer
-
-            return best_match
-
-        except Exception:
-            return None
+        return None
 
 class HELMGenerator:
     def __init__(self):
