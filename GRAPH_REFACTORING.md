@@ -120,7 +120,7 @@ helm = generator.generate_helm_from_graph(graph)
 
 ---
 
-### 3. **HELM Generator** (`target_processor.py`)
+### 3. **HELM Generator** (`helm_generator.py`)
 
 #### `HELMGenerator.generate_helm_from_graph(graph)`
 **New method** that generates HELM notation from FragmentGraph:
@@ -259,8 +259,10 @@ logics/
 ├── pipeline.py              [UPDATED] - Works with graph
 │   └── convert_molecules_batch - Iterates graph nodes
 │
-├── target_processor.py      [UPDATED] - Graph-aware HELM
-│   ├── PrecisionMonomerMatcher
+├── monomer_matcher.py       [UPDATED] - Monomer matching
+│   └── MonomerMatcher
+│
+├── helm_generator.py        [UPDATED] - HELM notation generation
 │   └── HELMGenerator
 │       ├── generate_helm_from_graph()  [NEW]
 │       └── generate_helm_notation()    [LEGACY]

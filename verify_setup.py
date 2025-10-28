@@ -65,7 +65,9 @@ def check_files():
         os.path.join("logics", "main.py"),
         os.path.join("logics", "pipeline.py"),
         os.path.join("logics", "monomer_library.py"),
-        os.path.join("logics", "target_processor.py")
+        os.path.join("logics", "fragment_processor.py"),
+        os.path.join("logics", "monomer_matcher.py"),
+        os.path.join("logics", "helm_generator.py")
     ]
     
     for logic_file in logic_files:

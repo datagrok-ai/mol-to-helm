@@ -65,7 +65,10 @@ mol-to-helm/
 │   ├── main.py                 # Main test runner
 │   ├── pipeline.py             # Main conversion pipeline
 │   ├── monomer_library.py      # Monomer library management
-│   └── target_processor.py     # Molecular fragment processing
+│   ├── fragment_processor.py   # Molecular fragment processing
+│   ├── monomer_matcher.py      # Fragment to monomer matching
+│   ├── helm_generator.py       # HELM notation generation
+│   └── fragment_graph.py       # Graph data structures
 ├── test-sets/
 │   ├── HELM_LINEAR.csv         # Linear peptide test data
 │   ├── HELM_cyclic.csv         # Cyclic peptide test data
