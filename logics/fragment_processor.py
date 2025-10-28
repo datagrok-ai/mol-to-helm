@@ -158,12 +158,18 @@ class FragmentProcessor:
             # Extract bond info for fragmentation
             bond_indices = []
             bond_info = []  # (bond_idx, atom1, atom2, linkage_type)
+            seen_bonds = set()  # Track which bonds we've already added
             
             for atom1, atom2, linkage_type in bonds_to_cleave:
                 bond = mol.GetBondBetweenAtoms(atom1, atom2)
                 if bond:
-                    bond_indices.append(bond.GetIdx())
-                    bond_info.append((bond.GetIdx(), atom1, atom2, linkage_type))
+                    bond_idx = bond.GetIdx()
+                    if bond_idx not in seen_bonds:
+                        bond_indices.append(bond_idx)
+                        bond_info.append((bond_idx, atom1, atom2, linkage_type))
+                        seen_bonds.add(bond_idx)
+                    # Skip duplicate bonds silently
+                # Skip invalid bonds silently
 
             if not bond_indices:
                 # No valid bonds found
