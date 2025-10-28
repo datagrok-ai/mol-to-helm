@@ -5,9 +5,12 @@ from fragment_graph import FragmentGraph, FragmentNode, FragmentLink, LinkageTyp
 class BondDetector:
     #GENERALIZATION ITEM: BOND PATTERNS SHOULD BE DERIVED FROM LIBRARY
     def __init__(self):
-        self.peptide_bond = Chem.MolFromSmarts('[C;X3](=[O;X1])-[N;X3]')
-        self.disulfide_bond = Chem.MolFromSmarts('[S;X2]-[S;X2]')
-        self.primary_amine = Chem.MolFromSmarts('[N;H2;X3][C;X4]')
+        # True peptide bond: C and N both in backbone (each bonded to carbons)
+        self.peptide_bond = Chem.MolFromSmarts('[C;X4]-[C;X3](=[O;X1])-[N;X3]-[C;X4]')
+        # True disulfide bond: S-S where each S is bonded to carbon (cysteine residues)
+        self.disulfide_bond = Chem.MolFromSmarts('[C;X4]-[S;X2]-[S;X2]-[C;X4]')
+        # Primary amine at N-terminus (can be NH2 or NH3+)
+        self.primary_amine = Chem.MolFromSmarts('[N;H2,H3;X3,X4]-[C;X4]')
 
     def find_cleavable_bonds(self, mol: Chem.Mol):
         """
@@ -45,9 +48,11 @@ class BondDetector:
         try:
             matches = mol.GetSubstructMatches(self.peptide_bond)
             for match in matches:
-                if len(match) >= 3:
-                    c_atom = match[0]
-                    n_atom = match[2]
+                if len(match) >= 5:
+                    # Pattern: [C;X4]-[C;X3](=[O;X1])-[N;X3]-[C;X4]
+                    # match[0]=alpha-C, match[1]=carbonyl-C, match[2]=O, match[3]=N, match[4]=next-alpha-C
+                    c_atom = match[1]  # Carbonyl carbon
+                    n_atom = match[3]  # Nitrogen
                     bonds.append((c_atom, n_atom))
         except Exception:
             pass
@@ -59,9 +64,11 @@ class BondDetector:
         try:
             matches = mol.GetSubstructMatches(self.disulfide_bond)
             for match in matches:
-                if len(match) >= 2:
-                    s1_atom = match[0]
-                    s2_atom = match[1]
+                if len(match) >= 4:
+                    # Pattern: [C;X4]-[S;X2]-[S;X2]-[C;X4]
+                    # match[0]=C, match[1]=S, match[2]=S, match[3]=C
+                    s1_atom = match[1]  # First sulfur
+                    s2_atom = match[2]  # Second sulfur
                     bonds.append((s1_atom, s2_atom))
         except Exception:
             pass
