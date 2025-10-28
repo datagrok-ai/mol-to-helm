@@ -16,57 +16,61 @@ class MonomerData:
         self.smiles = ""  # Original SMILES with R-groups
         self.r_groups = {}  # R-group label -> cap SMILES
         self.r_group_count = 0
-        self.capped_smiles = {}  # frozenset of capped R-group labels -> canonical SMILES
+        self.capped_smiles_cache = {}  # Cache: frozenset of removed R-groups -> canonical SMILES
 
     def __repr__(self):
         return f"Monomer({self.symbol}: {self.name}, R-groups: {self.r_group_count})"
     
-    def generate_capped_smiles(self):
+    def get_capped_smiles_for_removed_rgroups(self, removed_rgroups: frozenset) -> str:
         """
-        Generate all possible canonical SMILES with different R-group cappings.
-        
-        For a monomer with n R-groups, this generates 2^n - 1 versions:
-        - Each R-group either capped (replaced with cap) or uncapped (removed)
-        - We store all combinations except all-uncapped (meaningless)
-        """
-        if not self.mol or not self.r_groups:
-            return
-        
-        r_group_labels = list(self.r_groups.keys())
-        
-        # Generate all non-empty combinations of R-groups to cap
-        for r in range(1, len(r_group_labels) + 1):
-            for capped_combo in combinations(r_group_labels, r):
-                capped_set = frozenset(capped_combo)
-                smiles = self._get_smiles_with_caps(capped_set)
-                if smiles:
-                    self.capped_smiles[capped_set] = smiles
-    
-    def _get_smiles_with_caps(self, caps_to_apply: frozenset) -> str:
-        """
-        Generate canonical SMILES with specific R-groups removed (uncapped).
+        Get canonical SMILES with specific R-groups removed (lazy generation with caching).
         
         Args:
-            caps_to_apply: Set of R-group labels to KEEP/CAP (others are removed)
+            removed_rgroups: frozenset of R-group labels that were removed (e.g., {'R1', 'R2'})
         
         Returns:
-            Canonical SMILES string with non-capped R-groups removed
+            Canonical SMILES with those R-groups removed, or empty string on error
+            
+        Example:
+            For monomer with R1, R2:
+            - get_capped_smiles_for_removed_rgroups({'R1'}) → SMILES with R1 removed, R2 kept
+            - get_capped_smiles_for_removed_rgroups({'R2'}) → SMILES with R2 removed, R1 kept
+            - get_capped_smiles_for_removed_rgroups({'R1', 'R2'}) → SMILES with both removed
+        """
+        # Check cache first
+        if removed_rgroups in self.capped_smiles_cache:
+            return self.capped_smiles_cache[removed_rgroups]
+        
+        # Generate on demand
+        smiles = self._get_smiles_with_rgroups_removed(removed_rgroups)
+        
+        # Cache for future use
+        self.capped_smiles_cache[removed_rgroups] = smiles
+        
+        return smiles
+    
+    def _get_smiles_with_rgroups_removed(self, removed_rgroups: frozenset) -> str:
+        """
+        Generate canonical SMILES with specific R-groups removed.
+        
+        Args:
+            removed_rgroups: Set of R-group labels to REMOVE (e.g., {'R1', 'R2'})
+        
+        Returns:
+            Canonical SMILES string with those R-groups removed
         """
         try:
-            # Simply remove dummy atoms that are NOT in caps_to_apply
-            # This creates "open" ends where bonds were cleaved
             mol_copy = Chem.Mol(self.mol)
             
-            # Find and remove dummy atoms for R-groups NOT in caps_to_apply
+            # Find and remove dummy atoms for specified R-groups
             atoms_to_remove = []
             for atom in mol_copy.GetAtoms():
                 if atom.GetAtomicNum() == 0:  # Dummy atom (R-group)
-                    # Get isotope number which corresponds to R-group number
                     isotope = atom.GetIsotope()
                     if isotope > 0:
                         r_label = f"R{isotope}"
-                        # If this R-group is NOT being capped, remove it
-                        if r_label not in caps_to_apply:
+                        # Remove if this R-group is in the removed set
+                        if r_label in removed_rgroups:
                             atoms_to_remove.append(atom.GetIdx())
             
             # Remove dummy atoms in reverse order to preserve indices
@@ -155,15 +159,12 @@ class MonomerLibrary:
                 monomer.r_groups[label] = cap_smiles
         
         monomer.r_group_count = len(monomer.r_groups)
-        
-        # Generate all capped SMILES variations
-        monomer.generate_capped_smiles()
 
         return monomer
 
     def find_monomer_by_fragment_smiles(self, fragment_smiles: str, num_connections: int):
         """
-        Find monomer by matching fragment SMILES against capped variations.
+        Find monomer by matching fragment SMILES with on-demand R-group removal.
         
         Args:
             fragment_smiles: Canonical SMILES of the fragment  
@@ -173,21 +174,33 @@ class MonomerLibrary:
             MonomerData if match found, None otherwise
             
         Logic:
-            - Fragment with N connections had N R-groups removed during fragmentation
-            - capped_set contains R-groups that were KEPT (not removed)
-            - Number of R-groups removed = total_r_groups - len(capped_set)
-            - This should equal num_connections
+            - Fragment with N connections → N R-groups were removed during fragmentation
+            - For monomer with M R-groups, try all C(M,N) combinations of which N R-groups were removed
+            - Generate SMILES for each combination on-demand (with caching)
+            
+        Example:
+            Fragment has 1 connection, monomer has R1, R2:
+            - Try removing R1 → check if SMILES matches
+            - Try removing R2 → check if SMILES matches
         """
         # Search through all monomers
         for symbol, monomer in self.monomers.items():
-            # Check if monomer has a capped SMILES variation matching this fragment
-            for capped_set, capped_smiles in monomer.capped_smiles.items():
-                # Calculate number of R-groups removed
-                num_kept = len(capped_set)
-                num_removed = monomer.r_group_count - num_kept
+            # Skip if monomer doesn't have enough R-groups
+            if monomer.r_group_count < num_connections:
+                continue
+            
+            # Generate all combinations of num_connections R-groups that could have been removed
+            r_group_labels = list(monomer.r_groups.keys())
+            
+            # For each combination of R-groups that could have been removed
+            for removed_combo in combinations(r_group_labels, num_connections):
+                removed_set = frozenset(removed_combo)
                 
-                # Match if: same SMILES and same number of removed R-groups
-                if capped_smiles == fragment_smiles and num_removed == num_connections:
+                # Generate SMILES with these R-groups removed (lazy, cached)
+                candidate_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
+                
+                # Check if it matches the fragment
+                if candidate_smiles == fragment_smiles:
                     return monomer
         
         return None
