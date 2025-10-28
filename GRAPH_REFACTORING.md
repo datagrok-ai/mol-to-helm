@@ -101,14 +101,14 @@ Returns: List[(atom1_idx, atom2_idx, LinkageType)]
 # OLD CODE:
 fragments = processor.process_molecule(mol, is_cyclic)
 for fragment in fragments:
-    monomer = matcher.find_best_match(fragment)
+    monomer = matcher.find_exact_match(fragment)
     matched_monomers.append(monomer)
 helm = generator.generate_helm_notation(matched_monomers, is_cyclic)
 
 # NEW CODE:
 graph = processor.process_molecule(mol, is_cyclic)
 for node_id, node in graph.nodes.items():
-    monomer = matcher.find_best_match(node.mol)
+    monomer = matcher.find_exact_match(node.mol)
     node.monomer = monomer  # Store in node
 helm = generator.generate_helm_from_graph(graph)
 ```

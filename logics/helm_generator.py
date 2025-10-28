@@ -13,6 +13,7 @@ class HELMGenerator:
     """
     
     def __init__(self):
+        #GENERALIZATION ITEM: POLYMER TYPES SHOULD BE DERIVED FROM LIBRARY
         self.polymer_types = {
             "peptide": "PEPTIDE",
             "rna": "RNA",

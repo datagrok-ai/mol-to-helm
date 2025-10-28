@@ -109,7 +109,7 @@ def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
             # Match each fragment to a monomer
             unknown_count = 0
             for node_id, node in graph.nodes.items():
-                monomer = matcher.find_best_match(node.mol)
+                monomer = matcher.find_exact_match(node.mol)
                 if monomer:
                     node.monomer = monomer
                 else:
