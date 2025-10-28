@@ -63,12 +63,13 @@ class MonomerData:
             mol_copy = Chem.Mol(self.mol)
             
             # Find and remove dummy atoms for specified R-groups
+            # IMPORTANT: SMILES [*:1] uses atom map numbers, not isotopes!
             atoms_to_remove = []
             for atom in mol_copy.GetAtoms():
                 if atom.GetAtomicNum() == 0:  # Dummy atom (R-group)
-                    isotope = atom.GetIsotope()
-                    if isotope > 0:
-                        r_label = f"R{isotope}"
+                    map_num = atom.GetAtomMapNum()
+                    if map_num > 0:
+                        r_label = f"R{map_num}"
                         # Remove if this R-group is in the removed set
                         if r_label in removed_rgroups:
                             atoms_to_remove.append(atom.GetIdx())
@@ -122,6 +123,12 @@ class MonomerLibrary:
                 continue
 
     def _parse_monomer(self, monomer_dict: dict):
+        # IMPORTANT: Only load PEPTIDE monomers (amino acids)
+        # The library contains RNA, CHEM, etc. with overlapping symbols (A, C, G, T, U)
+        polymer_type = monomer_dict.get('polymerType', '')
+        if polymer_type != 'PEPTIDE':
+            return None
+        
         monomer = MonomerData()
         monomer.symbol = monomer_dict.get('symbol', '')
         monomer.name = monomer_dict.get('name', '')
