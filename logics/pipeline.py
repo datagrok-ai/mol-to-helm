@@ -124,6 +124,13 @@ def convert_molecules_batch(molfiles: list) -> list:
                     mock_monomer.name = f"Unknown_{unknown_count}"
                     node.monomer = mock_monomer
             
+            # Try to recover unmatched fragments by merging with neighbors
+            max_recovery_attempts = 3  # Prevent infinite loops
+            for attempt in range(max_recovery_attempts):
+                had_changes = processor.recover_unmatched_fragments(graph, matcher)
+                if not had_changes:
+                    break
+            
             if len(graph.nodes) > 0:
                 helm_notation = helm_generator.generate_helm_from_graph(graph)
                 results.append((True, helm_notation))

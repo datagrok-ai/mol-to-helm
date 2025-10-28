@@ -143,6 +143,8 @@ class FragmentProcessor:
             FragmentGraph object containing fragments and their connections
         """
         graph = FragmentGraph()
+        # Store original molecule for fragment recovery
+        graph.original_mol = mol
         
         try:
             bonds_to_cleave = self.bond_detector.find_cleavable_bonds(mol)
@@ -182,15 +184,18 @@ class FragmentProcessor:
             # Fragment the molecule
             fragmented_mol = Chem.FragmentOnBonds(mol, bond_indices, addDummies=True)
             
-            # Get fragments with atom mapping
+            # Get fragments AND their atom mappings separately
             fragments_tuple = Chem.GetMolFrags(
                 fragmented_mol, 
                 asMols=True, 
-                sanitizeFrags=True,
-                frags=None,
-                fragsMolAtomMapping=None
+                sanitizeFrags=True
             )
             fragments = list(fragments_tuple)
+            
+            # Store bond cleavage info for recovery - we'll use this to selectively re-fragment
+            graph.cleaved_bond_indices = bond_indices
+            graph.bond_info = bond_info
+            print(f"DEBUG: Created {len(fragments)} fragments, cleaved {len(bond_indices)} bonds")
 
             # Create nodes for each fragment
             fragment_nodes = []
@@ -251,4 +256,201 @@ class FragmentProcessor:
 
         except Exception:
             return None
+
+    def _reconstruct_fragment(self, node_ids: list, graph: FragmentGraph) -> Chem.Mol:
+        """
+        Reconstruct a molecule by combining multiple fragment nodes.
+        Re-fragments the original molecule, excluding bonds between the nodes to merge.
+        """
+        if not node_ids or not hasattr(graph, 'original_mol') or not hasattr(graph, 'cleaved_bond_indices'):
+            return None
+        
+        try:
+            # Sort node IDs to ensure consistent ordering
+            sorted_nodes = sorted(node_ids)
+            
+            # Identify which bonds to exclude (bonds between consecutive merged nodes)
+            bonds_to_exclude = set()
+            for i in range(len(sorted_nodes) - 1):
+                # We want to keep the bond between node i and node i+1
+                # This bond would be at position sorted_nodes[i] in the cleaved_bond_indices
+                if sorted_nodes[i] + 1 == sorted_nodes[i + 1]:
+                    # Consecutive nodes - exclude the bond between them
+                    if sorted_nodes[i] < len(graph.cleaved_bond_indices):
+                        bonds_to_exclude.add(sorted_nodes[i])
+            
+            # Create new bond list excluding the bonds we want to keep
+            new_bond_indices = [
+                bond_idx for i, bond_idx in enumerate(graph.cleaved_bond_indices)
+                if i not in bonds_to_exclude
+            ]
+            
+            print(f"DEBUG reconstruct: Original had {len(graph.cleaved_bond_indices)} cleaved bonds, "
+                  f"excluding {len(bonds_to_exclude)} bonds, new list has {len(new_bond_indices)} bonds")
+            
+            # Re-fragment with the modified bond list
+            if not new_bond_indices:
+                # No bonds to cleave - return whole molecule
+                return graph.original_mol
+            
+            fragmented_mol = Chem.FragmentOnBonds(graph.original_mol, new_bond_indices, addDummies=True)
+            fragments_tuple = Chem.GetMolFrags(fragmented_mol, asMols=True, sanitizeFrags=True)
+            fragments = list(fragments_tuple)
+            
+            # Find which fragment corresponds to our merged nodes
+            # The merged nodes should be at the position of the first node ID in sorted order
+            target_idx = sorted_nodes[0]
+            
+            # Account for excluded bonds shifting fragment indices
+            adjusted_idx = target_idx - sum(1 for excluded_idx in bonds_to_exclude if excluded_idx < target_idx)
+            
+            print(f"DEBUG reconstruct: Got {len(fragments)} fragments after re-fragmentation, "
+                  f"target_idx={target_idx}, adjusted_idx={adjusted_idx}")
+            
+            if adjusted_idx < len(fragments):
+                clean_frag = self._clean_fragment(fragments[adjusted_idx])
+                return clean_frag if clean_frag else fragments[adjusted_idx]
+            
+            return None
+        
+        except Exception as e:
+            print(f"DEBUG reconstruct: Exception: {e}")
+            return None
+
+    def _merge_nodes_in_graph(self, graph: FragmentGraph, nodes_to_merge: list, 
+                              new_node: FragmentNode) -> None:
+        """
+        Remove old nodes, add new merged node, update all links.
+        Preserves terminal flags from edge nodes.
+        """
+        if not nodes_to_merge:
+            return
+        
+        # Sort node IDs to identify edge nodes
+        sorted_nodes = sorted(nodes_to_merge)
+        leftmost = sorted_nodes[0]
+        rightmost = sorted_nodes[-1]
+        
+        # Preserve terminal flags
+        if leftmost in graph.nodes:
+            new_node.is_n_terminal = graph.nodes[leftmost].is_n_terminal
+        if rightmost in graph.nodes:
+            new_node.is_c_terminal = graph.nodes[rightmost].is_c_terminal
+        
+        # Update links: replace references to merged nodes
+        updated_links = []
+        nodes_to_merge_set = set(nodes_to_merge)
+        
+        for link in graph.links:
+            from_in = link.from_node_id in nodes_to_merge_set
+            to_in = link.to_node_id in nodes_to_merge_set
+            
+            # Skip internal links between merged nodes
+            if from_in and to_in:
+                continue
+            
+            # Update link if one end is being merged
+            new_from = new_node.id if from_in else link.from_node_id
+            new_to = new_node.id if to_in else link.to_node_id
+            
+            updated_links.append(FragmentLink(new_from, new_to, link.linkage_type))
+        
+        # Remove old nodes
+        for node_id in nodes_to_merge:
+            if node_id in graph.nodes:
+                del graph.nodes[node_id]
+        
+        # Add new node and update links
+        graph.add_node(new_node)
+        graph.links = updated_links
+
+    def recover_unmatched_fragments(self, graph: FragmentGraph, matcher) -> bool:
+        """
+        Try to recover unmatched fragments by merging with neighbors.
+        Returns True if any merges were successful.
+        """
+        # Identify unmatched nodes
+        unmatched_nodes = []
+        for node_id, node in graph.nodes.items():
+            if node.monomer and node.monomer.symbol.startswith("X"):
+                unmatched_nodes.append(node_id)
+        
+        if not unmatched_nodes:
+            return False
+        
+        print(f"DEBUG: Found {len(unmatched_nodes)} unmatched nodes: {unmatched_nodes}")
+        
+        had_changes = False
+        
+        # Try to recover each unmatched node
+        for node_id in unmatched_nodes:
+            # Check if node still exists (might have been merged already)
+            if node_id not in graph.nodes:
+                continue
+            
+            # Get neighbors
+            neighbors = graph.get_neighbors(node_id)
+            neighbor_ids = [n[0] for n in neighbors]
+            
+            if not neighbor_ids:
+                continue
+            
+            # Separate left and right neighbors (assuming sequential order)
+            left_neighbors = [n for n in neighbor_ids if n < node_id]
+            right_neighbors = [n for n in neighbor_ids if n > node_id]
+            
+            # Try merge combinations: left only, right only, both
+            merge_attempts = []
+            
+            if left_neighbors:
+                merge_attempts.append([left_neighbors[0], node_id])
+            if right_neighbors:
+                merge_attempts.append([node_id, right_neighbors[0]])
+            if left_neighbors and right_neighbors:
+                merge_attempts.append([left_neighbors[0], node_id, right_neighbors[0]])
+            
+            # Try each merge combination
+            for nodes_to_merge in merge_attempts:
+                print(f"DEBUG: Trying to merge nodes {nodes_to_merge}")
+                
+                # Reconstruct combined molecule
+                combined_mol = self._reconstruct_fragment(nodes_to_merge, graph)
+                if not combined_mol:
+                    print(f"DEBUG: Failed to reconstruct molecule for {nodes_to_merge}")
+                    continue
+                
+                print(f"DEBUG: Reconstructed mol with {combined_mol.GetNumAtoms()} atoms")
+                
+                # Count expected connections for this merged fragment
+                # Get all unique neighbors of the merged set
+                all_neighbors = set()
+                for nid in nodes_to_merge:
+                    if nid in graph.nodes:
+                        node_neighbors = graph.get_neighbors(nid)
+                        for neighbor_id, _ in node_neighbors:
+                            if neighbor_id not in nodes_to_merge:
+                                all_neighbors.add(neighbor_id)
+                
+                num_connections = len(all_neighbors)
+                print(f"DEBUG: Expecting {num_connections} connections")
+                
+                # Try to match the combined fragment
+                monomer = matcher.find_exact_match(combined_mol, num_connections)
+                
+                if monomer:
+                    print(f"DEBUG: SUCCESS! Matched to {monomer.symbol}")
+                    # Success! Create new merged node
+                    new_node_id = min(nodes_to_merge)  # Use lowest ID
+                    new_node = FragmentNode(new_node_id, combined_mol)
+                    new_node.monomer = monomer
+                    
+                    # Merge nodes in graph
+                    self._merge_nodes_in_graph(graph, nodes_to_merge, new_node)
+                    
+                    had_changes = True
+                    break  # Stop trying other combinations for this node
+                else:
+                    print(f"DEBUG: No match found for merge {nodes_to_merge}")
+        
+        return had_changes
 
