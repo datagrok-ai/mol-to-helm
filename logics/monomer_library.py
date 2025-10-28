@@ -51,39 +51,78 @@ class MonomerData:
     
     def _get_smiles_with_rgroups_removed(self, removed_rgroups: frozenset) -> str:
         """
-        Generate canonical SMILES with specific R-groups removed.
+        Generate canonical SMILES with specific R-groups removed and others capped.
         
         Args:
-            removed_rgroups: Set of R-group labels to REMOVE (e.g., {'R1', 'R2'})
+            removed_rgroups: Set of R-group labels where bonds were broken (e.g., {'R1', 'R2'})
         
         Returns:
-            Canonical SMILES string with those R-groups removed
+            Canonical SMILES string matching fragment structure
+            
+        Logic:
+            - R-groups in removed_rgroups: Remove dummy atom (bond was broken)
+            - R-groups NOT in removed_rgroups: Cap according to library (e.g., OH, H)
+            - Final SMILES has NO [*:X] markers to match fragment SMILES
         """
         try:
             mol_copy = Chem.Mol(self.mol)
             
-            # Find and remove dummy atoms for specified R-groups
+            # Identify which R-groups to cap vs remove
+            kept_rgroups = set(self.r_groups.keys()) - removed_rgroups
+            
+            # Process each R-group
             # IMPORTANT: SMILES [*:1] uses atom map numbers, not isotopes!
-            atoms_to_remove = []
+            dummy_atoms_to_process = []
             for atom in mol_copy.GetAtoms():
                 if atom.GetAtomicNum() == 0:  # Dummy atom (R-group)
                     map_num = atom.GetAtomMapNum()
                     if map_num > 0:
                         r_label = f"R{map_num}"
-                        # Remove if this R-group is in the removed set
                         if r_label in removed_rgroups:
-                            atoms_to_remove.append(atom.GetIdx())
+                            # Just remove this dummy atom
+                            dummy_atoms_to_process.append((atom.GetIdx(), 'remove', r_label))
+                        elif r_label in kept_rgroups:
+                            # Need to cap this R-group
+                            cap_smiles = self.r_groups.get(r_label, '')
+                            dummy_atoms_to_process.append((atom.GetIdx(), 'cap', cap_smiles))
             
-            # Remove dummy atoms in reverse order to preserve indices
-            if atoms_to_remove:
-                atoms_to_remove.sort(reverse=True)
-                emol = Chem.EditableMol(mol_copy)
-                for atom_idx in atoms_to_remove:
+            # Apply caps to kept R-groups, remove others
+            # Process in two passes: first cap, then remove
+            # Cap R-groups: Replace [*:X] with the cap group (e.g., H or OH)
+            for atom_idx, action, data in sorted(dummy_atoms_to_process, reverse=True):
+                if action == 'cap':
+                    cap_smiles = data
+                    # For R1 cap '[*:1][H]', we just remove [*:1] (implicit H added)
+                    # For R2 cap 'O[*:2]', we need to add O when removing [*:2]
+                    # Simplified: check if cap has O
+                    if 'O' in cap_smiles and '[*:' in cap_smiles:
+                        # R2-like cap: need to add OH group
+                        # Get the neighbor atom of the dummy
+                        atom = mol_copy.GetAtomWithIdx(atom_idx)
+                        neighbors = atom.GetNeighbors()
+                        if neighbors:
+                            neighbor = neighbors[0]
+                            # Add OH to the neighbor before removing dummy
+                            emol = Chem.EditableMol(mol_copy)
+                            new_o_idx = emol.AddAtom(Chem.Atom(8))  # Oxygen
+                            emol.AddBond(neighbor.GetIdx(), new_o_idx, Chem.BondType.SINGLE)
+                            emol.RemoveAtom(atom_idx)
+                            mol_copy = emol.GetMol()
+                    else:
+                        # R1-like cap: just remove dummy (implicit H)
+                        emol = Chem.EditableMol(mol_copy)
+                        emol.RemoveAtom(atom_idx)
+                        mol_copy = emol.GetMol()
+                elif action == 'remove':
+                    # Just remove the dummy atom
+                    emol = Chem.EditableMol(mol_copy)
                     emol.RemoveAtom(atom_idx)
-                mol_copy = emol.GetMol()
+                    mol_copy = emol.GetMol()
             
             if mol_copy:
-                # Generate canonical SMILES
+                # Sanitize to add implicit hydrogens where needed
+                Chem.SanitizeMol(mol_copy)
+                # Generate canonical SMILES without any R-group markers
                 return Chem.MolToSmiles(mol_copy, canonical=True)
             return ""
         except Exception as e:
