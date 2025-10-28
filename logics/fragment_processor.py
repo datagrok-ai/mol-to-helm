@@ -1,7 +1,7 @@
 from rdkit import Chem
 
 
-class AdvancedTerminalNormalizer:
+class TerminalNormalizer:
     def __init__(self):
         self.carboxyl_pattern = Chem.MolFromSmarts('[C;X3](=[O;X1])[O;H1]')
         self.amide_pattern = Chem.MolFromSmarts('[C;X3](=[O;X1])[N;X3]')
@@ -57,7 +57,7 @@ class AdvancedTerminalNormalizer:
             return mol
 
 
-class AdvancedBondDetector:
+class BondDetector:
     def __init__(self):
         self.peptide_bond = Chem.MolFromSmarts('[C;X3](=[O;X1])-[N;X3]')
         self.disulfide_bond = Chem.MolFromSmarts('[S;X2]-[S;X2]')
@@ -142,11 +142,11 @@ class AdvancedBondDetector:
             return None
 
 
-class PrecisionFragmentProcessor:
+class FragmentProcessor:
     def __init__(self, monomer_library):
         self.monomer_library = monomer_library
-        self.bond_detector = AdvancedBondDetector()
-        self.normalizer = AdvancedTerminalNormalizer()
+        self.bond_detector = BondDetector()
+        self.normalizer = TerminalNormalizer()
 
     def process_molecule(self, mol: Chem.Mol, is_cyclic: bool = False):
         try:

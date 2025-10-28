@@ -1,7 +1,7 @@
 from rdkit import Chem
 import os
 from monomer_library import MonomerLibrary, MonomerData
-from fragment_processor import PrecisionFragmentProcessor
+from fragment_processor import FragmentProcessor
 from target_processor import PrecisionMonomerMatcher, HELMGenerator
 
 # Global variables for caching
@@ -46,7 +46,7 @@ def _get_processors():
         if not library:
             return None, None, None
         
-        _PROCESSOR = PrecisionFragmentProcessor(library)
+        _PROCESSOR = FragmentProcessor(library)
         _MATCHER = PrecisionMonomerMatcher(library)
         _HELM_GENERATOR = HELMGenerator()
     

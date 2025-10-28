@@ -1,6 +1,6 @@
 from rdkit import Chem
 from monomer_library import MonomerLibrary
-from fragment_processor import AdvancedTerminalNormalizer
+from fragment_processor import TerminalNormalizer
 
 
 class PrecisionMonomerMatcher:
@@ -111,7 +111,7 @@ class PrecisionMonomerMatcher:
 
     def _find_with_normalization(self, fragment: Chem.Mol, frag_smiles: str):
         try:
-            normalizer = AdvancedTerminalNormalizer()
+            normalizer = TerminalNormalizer()
 
             normalized1 = normalizer.normalize_for_library(fragment, is_c_terminal=True)
             if normalized1:
