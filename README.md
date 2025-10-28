@@ -94,14 +94,22 @@ python main.py
 ### Using in Your Code
 ```python
 from rdkit import Chem
-from pipeline import mol_to_helm
+from pipeline import convert_molecules_batch
 
 # Load your molecule
 mol = Chem.MolFromSmiles("your_smiles_here")
 
+# Convert molecule to molfile format
+molfile = Chem.MolToMolBlock(mol)
+
 # Convert to HELM notation
-helm_notation = mol_to_helm(mol, is_cyclic=False)
-print(helm_notation)
+results = convert_molecules_batch([molfile], is_cyclic=False)
+success, helm_notation = results[0]
+
+if success:
+    print(helm_notation)
+else:
+    print("Conversion failed")
 ```
 
 ## Features

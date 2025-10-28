@@ -66,45 +66,6 @@ def preload_library():
     return processor is not None
 
 
-def mol_to_helm(mol: Chem.Mol, is_cyclic: bool = False) -> str:
-    """
-    Main function to convert RDKit molecule to HELM notation.
-
-    Args:
-        mol: RDKit molecule
-        is_cyclic: Cyclic structure flag
-
-    Returns:
-        HELM notation as a string
-    """
-    # Use shared processor instances
-    processor, matcher, helm_generator = _get_processors()
-    if not processor:
-        return ""
-
-    fragments = processor.process_molecule(mol, is_cyclic=is_cyclic)
-
-    matched_monomers = []
-    unknown_count = 0
-
-    for fragment in fragments:
-        monomer = matcher.find_best_match(fragment)
-        if monomer:
-            matched_monomers.append(monomer)
-        else:
-            unknown_count += 1
-            mock_monomer = MonomerData()
-            mock_monomer.symbol = f"X{unknown_count}"
-            mock_monomer.name = f"Unknown_{unknown_count}"
-            matched_monomers.append(mock_monomer)
-
-    if matched_monomers:
-        helm_notation = helm_generator.generate_helm_notation(matched_monomers, is_cyclic=is_cyclic)
-        return helm_notation
-    else:
-        return ""
-
-
 def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
     """
     Convert a batch of molecules from molfile format to HELM notation.
