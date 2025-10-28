@@ -58,9 +58,11 @@ class TerminalNormalizer:
 
 
 class BondDetector:
+    #GENERALIZATION ITEM: BOND PATTERNS SHOULD BE DERIVED FROM LIBRARY
     def __init__(self):
         self.peptide_bond = Chem.MolFromSmarts('[C;X3](=[O;X1])-[N;X3]')
         self.disulfide_bond = Chem.MolFromSmarts('[S;X2]-[S;X2]')
+        self.primary_amine = Chem.MolFromSmarts('[N;H2;X3][C;X4]')
 
     def find_cleavable_bonds(self, mol: Chem.Mol):
         try:
@@ -123,8 +125,7 @@ class BondDetector:
 
     def _find_n_terminal(self, mol: Chem.Mol):
         try:
-            primary_amine = Chem.MolFromSmarts('[N;H2;X3][C;X4]')
-            matches = mol.GetSubstructMatches(primary_amine)
+            matches = mol.GetSubstructMatches(self.primary_amine)
             if matches:
                 return matches[0][0]
 
