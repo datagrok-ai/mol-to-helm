@@ -68,13 +68,12 @@ def preload_library():
     return processor is not None
 
 
-def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
+def convert_molecules_batch(molfiles: list) -> list:
     """
     Convert a batch of molecules from molfile format to HELM notation.
     
     Args:
         molfiles: List of molfile strings
-        is_cyclic: Whether the peptides are cyclic (default: False)
     
     Returns:
         List of tuples: (success: bool, helm_notation: str)
@@ -96,7 +95,8 @@ def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
     
     results = []
     
-    for molfile in molfiles:
+    for i in range(len(molfiles)):
+        molfile = molfiles[i]
         mol = Chem.MolFromMolBlock(molfile)
         if not mol:
             results.append((False, ""))
@@ -104,7 +104,7 @@ def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
         
         try:
             # Process molecule into fragment graph
-            graph = processor.process_molecule(mol, is_cyclic=is_cyclic)
+            graph = processor.process_molecule(mol)
             
             # Match each fragment to a monomer using graph topology
             unknown_count = 0

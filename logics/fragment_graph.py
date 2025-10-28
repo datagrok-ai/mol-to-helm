@@ -64,7 +64,6 @@ class FragmentGraph:
     def __init__(self):
         self.nodes: Dict[int, FragmentNode] = {}  # node_id -> FragmentNode
         self.links: List[FragmentLink] = []
-        self.is_cyclic = False
     
     def add_node(self, node: FragmentNode) -> int:
         """Add a fragment node to the graph"""
@@ -152,7 +151,7 @@ class FragmentGraph:
         return len(self.nodes)
     
     def __repr__(self):
-        return f"FragmentGraph(nodes={len(self.nodes)}, links={len(self.links)}, cyclic={self.is_cyclic})"
+        return f"FragmentGraph(nodes={len(self.nodes)}, links={len(self.links)})"
     
     def to_dict(self) -> dict:
         """Convert graph to dictionary for serialization"""
@@ -176,7 +175,6 @@ class FragmentGraph:
                     "to_atom": link.to_atom_idx
                 }
                 for link in self.links
-            ],
-            "is_cyclic": self.is_cyclic
+            ]
         }
 

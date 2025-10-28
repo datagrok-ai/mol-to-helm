@@ -132,19 +132,17 @@ class FragmentProcessor:
         self.monomer_library = monomer_library
         self.bond_detector = BondDetector()
 
-    def process_molecule(self, mol: Chem.Mol, is_cyclic: bool = False) -> FragmentGraph:
+    def process_molecule(self, mol: Chem.Mol) -> FragmentGraph:
         """
         Process a molecule into a fragment graph.
         
         Args:
             mol: RDKit molecule object
-            is_cyclic: Flag indicating if the peptide is cyclic
         
         Returns:
             FragmentGraph object containing fragments and their connections
         """
         graph = FragmentGraph()
-        graph.is_cyclic = is_cyclic
         
         try:
             bonds_to_cleave = self.bond_detector.find_cleavable_bonds(mol)
@@ -193,8 +191,8 @@ class FragmentProcessor:
             for i, frag in enumerate(fragments):
                 clean_frag = self._clean_fragment(frag)
                 if clean_frag and clean_frag.GetNumAtoms() >= 3:
-                    is_c_terminal = (i == len(fragments) - 1) and not is_cyclic
-                    is_n_terminal = (i == 0) and not is_cyclic
+                    is_c_terminal = (i == len(fragments) - 1)
+                    is_n_terminal = (i == 0)
                     # No normalization! Use fragment as-is
                     node = FragmentNode(i, clean_frag)
                     node.is_c_terminal = is_c_terminal
@@ -208,13 +206,6 @@ class FragmentProcessor:
             for i in range(len(fragment_nodes) - 1):
                 from_id, _ = fragment_nodes[i]
                 to_id, _ = fragment_nodes[i + 1]
-                link = FragmentLink(from_id, to_id, LinkageType.PEPTIDE)
-                graph.add_link(link)
-            
-            # For cyclic peptides, add link from last to first
-            if is_cyclic and len(fragment_nodes) > 1:
-                from_id, _ = fragment_nodes[-1]
-                to_id, _ = fragment_nodes[0]
                 link = FragmentLink(from_id, to_id, LinkageType.PEPTIDE)
                 graph.add_link(link)
             

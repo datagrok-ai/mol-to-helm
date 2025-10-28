@@ -3,7 +3,7 @@ import os
 from pipeline import convert_molecules_batch
 
 
-def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=False, extra_column=None):
+def test_peptides(filename, test_name, molfile_column, helm_column, extra_column=None):
     """
     Generic function to test peptide conversion from molecule to HELM notation.
     
@@ -12,7 +12,6 @@ def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=Fa
         test_name: Display name for the test (e.g., "LINEAR PEPTIDES")
         molfile_column: Name of the column containing molfile data
         helm_column: Name of the column containing reference HELM notation
-        is_cyclic: Whether the peptides are cyclic (default: False)
         extra_column: Optional column name to display additional info (e.g., BILN notation)
     """
     print(f"\n=== TESTING {test_name.upper()} ===")
@@ -32,7 +31,7 @@ def test_peptides(filename, test_name, molfile_column, helm_column, is_cyclic=Fa
     reference_helms = table[helm_column].tolist()
     
     # Convert all molecules in batch
-    results = convert_molecules_batch(molfiles, is_cyclic=is_cyclic)
+    results = convert_molecules_batch(molfiles)
     
     # Process and display results
     passed = 0
@@ -78,8 +77,7 @@ if __name__ == "__main__":
         filename='HELM_LINEAR.csv',
         test_name='Linear Peptides',
         molfile_column='molfile(HELM)',
-        helm_column='HELM',
-        is_cyclic=False
+        helm_column='HELM'
     )
     
     # # Test cyclic peptides
@@ -87,8 +85,7 @@ if __name__ == "__main__":
     #     filename='HELM_cyclic.csv',
     #     test_name='Cyclic Peptides',
     #     molfile_column='molfile(sequence)',
-    #     helm_column='sequence',
-    #     is_cyclic=True
+    #     helm_column='sequence'
     # )
     
     # # Test BILN peptides
@@ -97,6 +94,5 @@ if __name__ == "__main__":
     #     test_name='BILN Peptides',
     #     molfile_column='molfile(BILN)',
     #     helm_column='helm(BILN)',
-    #     is_cyclic=True,
     #     extra_column='BILN'
     # )
