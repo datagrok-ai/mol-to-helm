@@ -1,4 +1,5 @@
 from rdkit import Chem
+from fragment_graph import FragmentGraph, FragmentNode, FragmentLink, LinkageType
 
 
 class TerminalNormalizer:
@@ -65,13 +66,30 @@ class BondDetector:
         self.primary_amine = Chem.MolFromSmarts('[N;H2;X3][C;X4]')
 
     def find_cleavable_bonds(self, mol: Chem.Mol):
+        """
+        Find all cleavable bonds in the molecule.
+        
+        Returns:
+            List of tuples: (atom1_idx, atom2_idx, LinkageType)
+        """
         try:
             all_bonds = []
 
+            # Find peptide bonds
             peptide_bonds = self._find_peptide_bonds(mol)
-            all_bonds.extend(peptide_bonds)
+            all_bonds.extend([(bond[0], bond[1], LinkageType.PEPTIDE) for bond in peptide_bonds])
+            
+            # Find disulfide bonds
+            disulfide_bonds = self._find_disulfide_bonds(mol)
+            all_bonds.extend([(bond[0], bond[1], LinkageType.DISULFIDE) for bond in disulfide_bonds])
 
-            ordered_bonds = self._order_bonds_from_n_to_c(mol, all_bonds)
+            # Order peptide bonds from N to C (keep disulfide bonds unordered)
+            peptide_only = [(b[0], b[1]) for b in all_bonds if b[2] == LinkageType.PEPTIDE]
+            ordered_peptide = self._order_bonds_from_n_to_c(mol, peptide_only)
+            
+            # Rebuild with types
+            ordered_bonds = [(b[0], b[1], LinkageType.PEPTIDE) for b in ordered_peptide]
+            ordered_bonds.extend([b for b in all_bonds if b[2] != LinkageType.PEPTIDE])
 
             return ordered_bonds
 
@@ -87,6 +105,20 @@ class BondDetector:
                     c_atom = match[0]
                     n_atom = match[2]
                     bonds.append((c_atom, n_atom))
+        except Exception:
+            pass
+        return bonds
+    
+    def _find_disulfide_bonds(self, mol: Chem.Mol):
+        """Find disulfide bonds (S-S linkages)"""
+        bonds = []
+        try:
+            matches = mol.GetSubstructMatches(self.disulfide_bond)
+            for match in matches:
+                if len(match) >= 2:
+                    s1_atom = match[0]
+                    s2_atom = match[1]
+                    bonds.append((s1_atom, s2_atom))
         except Exception:
             pass
         return bonds
@@ -149,38 +181,108 @@ class FragmentProcessor:
         self.bond_detector = BondDetector()
         self.normalizer = TerminalNormalizer()
 
-    def process_molecule(self, mol: Chem.Mol, is_cyclic: bool = False):
+    def process_molecule(self, mol: Chem.Mol, is_cyclic: bool = False) -> FragmentGraph:
+        """
+        Process a molecule into a fragment graph.
+        
+        Args:
+            mol: RDKit molecule object
+            is_cyclic: Flag indicating if the peptide is cyclic
+        
+        Returns:
+            FragmentGraph object containing fragments and their connections
+        """
+        graph = FragmentGraph()
+        graph.is_cyclic = is_cyclic
+        
         try:
             bonds_to_cleave = self.bond_detector.find_cleavable_bonds(mol)
 
             if not bonds_to_cleave:
-                return [mol]
+                # Single fragment (no cleavable bonds)
+                node = FragmentNode(0, mol)
+                node.is_n_terminal = True
+                node.is_c_terminal = True
+                graph.add_node(node)
+                return graph
 
+            # Extract bond info for fragmentation
             bond_indices = []
-            for atom1, atom2 in bonds_to_cleave:
+            bond_info = []  # (bond_idx, atom1, atom2, linkage_type)
+            
+            for atom1, atom2, linkage_type in bonds_to_cleave:
                 bond = mol.GetBondBetweenAtoms(atom1, atom2)
                 if bond:
                     bond_indices.append(bond.GetIdx())
+                    bond_info.append((bond.GetIdx(), atom1, atom2, linkage_type))
 
             if not bond_indices:
-                return [mol]
+                # No valid bonds found
+                node = FragmentNode(0, mol)
+                node.is_n_terminal = True
+                node.is_c_terminal = True
+                graph.add_node(node)
+                return graph
 
+            # Fragment the molecule
             fragmented_mol = Chem.FragmentOnBonds(mol, bond_indices, addDummies=True)
-            fragments = Chem.GetMolFrags(fragmented_mol, asMols=True, sanitizeFrags=True)
+            
+            # Get fragments with atom mapping
+            fragments_tuple = Chem.GetMolFrags(
+                fragmented_mol, 
+                asMols=True, 
+                sanitizeFrags=True,
+                frags=None,
+                fragsMolAtomMapping=None
+            )
+            fragments = list(fragments_tuple)
 
-            cleaned_fragments = []
+            # Create nodes for each fragment
+            fragment_nodes = []
             for i, frag in enumerate(fragments):
                 clean_frag = self._clean_fragment(frag)
                 if clean_frag and clean_frag.GetNumAtoms() >= 3:
-                    is_c_terminal = (i == len(fragments) - 1)
+                    is_c_terminal = (i == len(fragments) - 1) and not is_cyclic
+                    is_n_terminal = (i == 0) and not is_cyclic
                     normalized_frag = self.normalizer.normalize_for_library(clean_frag, is_c_terminal)
                     if normalized_frag:
-                        cleaned_fragments.append(normalized_frag)
+                        node = FragmentNode(i, normalized_frag)
+                        node.is_c_terminal = is_c_terminal
+                        node.is_n_terminal = is_n_terminal
+                        graph.add_node(node)
+                        fragment_nodes.append((i, node))
 
-            return cleaned_fragments
+            # Create links between fragments based on cleaved bonds
+            # For sequential peptide bonds
+            peptide_links = [b for b in bond_info if b[3] == LinkageType.PEPTIDE]
+            for i in range(len(fragment_nodes) - 1):
+                from_id, _ = fragment_nodes[i]
+                to_id, _ = fragment_nodes[i + 1]
+                link = FragmentLink(from_id, to_id, LinkageType.PEPTIDE)
+                graph.add_link(link)
+            
+            # For cyclic peptides, add link from last to first
+            if is_cyclic and len(fragment_nodes) > 1:
+                from_id, _ = fragment_nodes[-1]
+                to_id, _ = fragment_nodes[0]
+                link = FragmentLink(from_id, to_id, LinkageType.PEPTIDE)
+                graph.add_link(link)
+            
+            # Add disulfide bridges (if any)
+            # TODO: Track which fragments contain the S atoms for proper linking
+            disulfide_links = [b for b in bond_info if b[3] == LinkageType.DISULFIDE]
+            # For now, disulfide bonds require more complex atom tracking
+            # This is a placeholder for future enhancement
 
-        except Exception:
-            return [mol]
+            return graph
+
+        except Exception as e:
+            # Fallback: single node with original molecule
+            node = FragmentNode(0, mol)
+            node.is_n_terminal = True
+            node.is_c_terminal = True
+            graph.add_node(node)
+            return graph
 
     def _clean_fragment(self, mol: Chem.Mol):
         try:

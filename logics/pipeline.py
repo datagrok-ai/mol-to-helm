@@ -102,24 +102,24 @@ def convert_molecules_batch(molfiles: list, is_cyclic: bool = False) -> list:
             continue
         
         try:
-            fragments = processor.process_molecule(mol, is_cyclic=is_cyclic)
+            # Process molecule into fragment graph
+            graph = processor.process_molecule(mol, is_cyclic=is_cyclic)
             
-            matched_monomers = []
+            # Match each fragment to a monomer
             unknown_count = 0
-            
-            for fragment in fragments:
-                monomer = matcher.find_best_match(fragment)
+            for node_id, node in graph.nodes.items():
+                monomer = matcher.find_best_match(node.mol)
                 if monomer:
-                    matched_monomers.append(monomer)
+                    node.monomer = monomer
                 else:
                     unknown_count += 1
                     mock_monomer = MonomerData()
                     mock_monomer.symbol = f"X{unknown_count}"
                     mock_monomer.name = f"Unknown_{unknown_count}"
-                    matched_monomers.append(mock_monomer)
+                    node.monomer = mock_monomer
             
-            if matched_monomers:
-                helm_notation = helm_generator.generate_helm_notation(matched_monomers, is_cyclic=is_cyclic)
+            if len(graph.nodes) > 0:
+                helm_notation = helm_generator.generate_helm_from_graph(graph)
                 results.append((True, helm_notation))
             else:
                 results.append((False, ""))
