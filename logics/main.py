@@ -32,10 +32,21 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
     molfiles = table[molfile_column].tolist()
     reference_helms = table[helm_column].tolist()
     
+    # Load custom library if path provided
+    library_json = None
+    if library_path:
+        if not os.path.exists(library_path):
+            print(f"ERROR: Library file not found: {library_path}")
+            return
+        
+        print(f"Reading custom library from: {library_path}")
+        with open(library_path, 'r', encoding='utf-8') as f:
+            library_json = f.read()
+    
     # Convert all molecules in batch
     print(f"Converting {len(molfiles)} molecules...")
     start_time = time.time()
-    results = convert_molecules_batch(molfiles, library_path=library_path)
+    results = convert_molecules_batch(molfiles, library_json=library_json)
     end_time = time.time()
     elapsed_time = end_time - start_time
     

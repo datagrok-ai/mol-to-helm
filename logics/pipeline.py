@@ -1,5 +1,6 @@
 from rdkit import Chem
 import os
+import json
 from monomer_library import MonomerLibrary, MonomerData
 from fragment_processor import FragmentProcessor
 from monomer_matcher import MonomerMatcher
@@ -68,13 +69,13 @@ def preload_library():
     return processor is not None
 
 
-def convert_molecules_batch(molfiles: list, library_path: str = None) -> list:
+def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
     """
     Convert a batch of molecules from molfile format to HELM notation.
     
     Args:
         molfiles: List of molfile strings
-        library_path: Optional path to monomer library JSON file (as string).
+        library_json: Optional monomer library as JSON string.
                      If None, uses default cached library from HELMCoreLibrary.json
     
     Returns:
@@ -82,7 +83,7 @@ def convert_molecules_batch(molfiles: list, library_path: str = None) -> list:
         success is True if molecule was successfully converted, False otherwise
     """
     # Determine which library to use
-    if library_path is None:
+    if library_json is None:
         # Use cached global library
         global _PROCESSOR
         if _PROCESSOR is None:
@@ -97,14 +98,29 @@ def convert_molecules_batch(molfiles: list, library_path: str = None) -> list:
         if not processor:
             return [(False, "") for _ in molfiles]
     else:
-        # Load custom library from provided path (no caching)
-        if not os.path.exists(library_path):
-            print(f"ERROR: Library file not found: {library_path}")
-            return [(False, "Library file not found") for _ in molfiles]
+        # Load custom library from provided JSON string (no caching)
+        try:
+            library_data = json.loads(library_json)
+        except Exception as e:
+            print(f"ERROR: Failed to parse library JSON: {str(e)}")
+            return [(False, "Invalid JSON") for _ in molfiles]
         
-        print(f"Loading custom library from: {library_path}")
+        print(f"Loading custom library from JSON string...")
         library = MonomerLibrary()
-        library.load_from_helm_json(library_path)
+        
+        # Parse the library data
+        successful = 0
+        for monomer_dict in library_data:
+            try:
+                monomer = library._parse_monomer(monomer_dict)
+                if monomer and monomer.mol is not None:
+                    library.monomers[monomer.symbol] = monomer
+                    library.symbol_to_monomer[monomer.symbol] = monomer
+                    clean_name = monomer.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    library.name_to_monomer[clean_name] = monomer
+                    successful += 1
+            except Exception:
+                continue
         
         if not library.monomers:
             print("ERROR: No monomers loaded from custom library")
