@@ -68,30 +68,54 @@ def preload_library():
     return processor is not None
 
 
-def convert_molecules_batch(molfiles: list) -> list:
+def convert_molecules_batch(molfiles: list, library_path: str = None) -> list:
     """
     Convert a batch of molecules from molfile format to HELM notation.
     
     Args:
         molfiles: List of molfile strings
+        library_path: Optional path to monomer library JSON file (as string).
+                     If None, uses default cached library from HELMCoreLibrary.json
     
     Returns:
         List of tuples: (success: bool, helm_notation: str)
         success is True if molecule was successfully converted, False otherwise
     """
-    # Ensure library and processors are initialized before batch processing
-    global _PROCESSOR
-    if _PROCESSOR is None:
-        print("Initializing monomer library and processors...")
-        if not preload_library():
-            print("ERROR: Failed to load monomer library")
-            return [(False, "Library initialization failed") for _ in molfiles]
-        print()
-    
-    # Use shared processor instances
-    processor, matcher, helm_generator = _get_processors()
-    if not processor:
-        return [(False, "") for _ in molfiles]
+    # Determine which library to use
+    if library_path is None:
+        # Use cached global library
+        global _PROCESSOR
+        if _PROCESSOR is None:
+            print("Initializing monomer library and processors...")
+            if not preload_library():
+                print("ERROR: Failed to load monomer library")
+                return [(False, "Library initialization failed") for _ in molfiles]
+            print()
+        
+        # Use shared processor instances
+        processor, matcher, helm_generator = _get_processors()
+        if not processor:
+            return [(False, "") for _ in molfiles]
+    else:
+        # Load custom library from provided path (no caching)
+        if not os.path.exists(library_path):
+            print(f"ERROR: Library file not found: {library_path}")
+            return [(False, "Library file not found") for _ in molfiles]
+        
+        print(f"Loading custom library from: {library_path}")
+        library = MonomerLibrary()
+        library.load_from_helm_json(library_path)
+        
+        if not library.monomers:
+            print("ERROR: No monomers loaded from custom library")
+            return [(False, "Library loading failed") for _ in molfiles]
+        
+        print(f"Custom library loaded: {len(library.monomers)} monomers")
+        
+        # Create processor instances for this library
+        processor = FragmentProcessor(library)
+        matcher = MonomerMatcher(library)
+        helm_generator = HELMGenerator()
     
     results = []
     

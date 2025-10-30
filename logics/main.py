@@ -4,7 +4,7 @@ import time
 from pipeline import convert_molecules_batch
 
 
-def test_peptides(filename, test_name, molfile_column, helm_column, extra_column=None):
+def test_peptides(filename, test_name, molfile_column, helm_column, extra_column=None, library_path=None):
     """
     Generic function to test peptide conversion from molecule to HELM notation.
     
@@ -14,6 +14,7 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
         molfile_column: Name of the column containing molfile data
         helm_column: Name of the column containing reference HELM notation
         extra_column: Optional column name to display additional info (e.g., BILN notation)
+        library_path: Optional path to custom monomer library JSON file
     """
     print(f"\n=== TESTING {test_name.upper()} ===")
 
@@ -34,7 +35,7 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
     # Convert all molecules in batch
     print(f"Converting {len(molfiles)} molecules...")
     start_time = time.time()
-    results = convert_molecules_batch(molfiles)
+    results = convert_molecules_batch(molfiles, library_path=library_path)
     end_time = time.time()
     elapsed_time = end_time - start_time
     
