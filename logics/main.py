@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import time
 from pipeline import convert_molecules_batch
 
 
@@ -31,7 +32,11 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
     reference_helms = table[helm_column].tolist()
     
     # Convert all molecules in batch
+    print(f"Converting {len(molfiles)} molecules...")
+    start_time = time.time()
     results = convert_molecules_batch(molfiles)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
     
     # Process and display results
     passed = 0
@@ -65,6 +70,7 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
     print("\n" + "=" * 60)
     print(f"{test_name.upper()} SUMMARY:")
     print(f"Passed: {passed}/{total} ({passed/total*100:.1f}%)")
+    print(f"Time consumed: {elapsed_time:.2f} seconds ({elapsed_time/total:.3f} sec/molecule)")
     if failed_tests:
         print(f"Failed tests: {failed_tests}")
     else:
