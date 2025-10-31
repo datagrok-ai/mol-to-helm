@@ -184,7 +184,7 @@ def aggregate_files(logics_dir: str, output_file: str):
     aggregated_content.append('#name: molToHelmConverterPy')
     aggregated_content.append('#description: Converts molecules to HELM notation based on monomer library')
     aggregated_content.append('#input: dataframe moleculesDataframe')
-    aggregated_content.append('#input: column moleculesColumn')
+    aggregated_content.append('#input: column moleculesColumn {semType: Molecule}')
     aggregated_content.append('#input: string libraryJSON')
     aggregated_content.append('#output: dataframe result_helm {action:join(moleculesDataframe)} [Sequences, in HELM format]')
     aggregated_content.append('molListToProcess = moleculesDataframe[moleculesColumn].tolist()')

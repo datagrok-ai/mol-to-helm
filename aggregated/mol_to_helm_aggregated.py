@@ -2,7 +2,7 @@
 #name: molToHelmConverterPy
 #description: Converts molecules to HELM notation based on monomer library
 #input: dataframe moleculesDataframe
-#input: column moleculesColumn
+#input: column moleculesColumn {semType: Molecule}
 #input: string libraryJSON
 #output: dataframe result_helm {action:join(moleculesDataframe)} [Sequences, in HELM format]
 molListToProcess = moleculesDataframe[moleculesColumn].tolist()
