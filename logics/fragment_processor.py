@@ -186,17 +186,16 @@ class FragmentProcessor:
             # Fragment the molecule
             fragmented_mol = Chem.FragmentOnBonds(mol, bond_indices, addDummies=True)
             
-            # Get fragments AND their atom mappings separately
-            fragments_tuple = Chem.GetMolFrags(
-                fragmented_mol, 
-                asMols=True, 
-                sanitizeFrags=True
-            )
-            fragments = list(fragments_tuple)
+            # Get fragments as molecules
+            fragments = Chem.GetMolFrags(fragmented_mol, asMols=True, sanitizeFrags=True)
+            
+            # Get atom mappings separately (which original atoms are in which fragment)
+            atom_mappings = Chem.GetMolFrags(fragmented_mol, asMols=False, fragsMolAtomMapping=True)
             
             # Store bond cleavage info for recovery - we'll use this to selectively re-fragment
             graph.cleaved_bond_indices = bond_indices
             graph.bond_info = bond_info
+            graph.atom_mappings = atom_mappings
             print(f"DEBUG: Created {len(fragments)} fragments, cleaved {len(bond_indices)} bonds")
 
             # Create nodes for each fragment
@@ -213,20 +212,24 @@ class FragmentProcessor:
                     graph.add_node(node)
                     fragment_nodes.append((i, node))
 
-            # Create links between fragments based on cleaved bonds
-            # For sequential peptide bonds
-            peptide_links = [b for b in bond_info if b[3] == LinkageType.PEPTIDE]
-            for i in range(len(fragment_nodes) - 1):
-                from_id, _ = fragment_nodes[i]
-                to_id, _ = fragment_nodes[i + 1]
-                link = FragmentLink(from_id, to_id, LinkageType.PEPTIDE)
-                graph.add_link(link)
+            # Create links between fragments based on the actual cleaved bonds
+            # Build mapping: original atom index → fragment index
+            atom_to_fragment = {}
+            for frag_idx, atom_indices in enumerate(atom_mappings):
+                for atom_idx in atom_indices:
+                    atom_to_fragment[atom_idx] = frag_idx
             
-            # Add disulfide bridges (if any)
-            # TODO: Track which fragments contain the S atoms for proper linking
-            disulfide_links = [b for b in bond_info if b[3] == LinkageType.DISULFIDE]
-            # For now, disulfide bonds require more complex atom tracking
-            # This is a placeholder for future enhancement
+            # For each cleaved bond, determine which fragments it connects
+            for bond_idx, atom1, atom2, linkage_type in bond_info:
+                # Find which fragments contain these atoms
+                frag1 = atom_to_fragment.get(atom1)
+                frag2 = atom_to_fragment.get(atom2)
+                
+                if frag1 is not None and frag2 is not None and frag1 != frag2:
+                    # These atoms are in different fragments, so the bond connects them
+                    link = FragmentLink(frag1, frag2, linkage_type)
+                    graph.add_link(link)
+                    print(f"DEBUG: Added {linkage_type.value.upper()} link between fragments {frag1} and {frag2}")
 
             return graph
 
