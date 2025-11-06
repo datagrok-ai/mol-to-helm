@@ -282,6 +282,94 @@ class FragmentProcessor:
         except Exception:
             return None
 
+    def _reconstruct_fragment_with_links(self, node_ids: list, graph: FragmentGraph, 
+                                         links_to_exclude: list) -> Chem.Mol:
+        """
+        Reconstruct a molecule by combining multiple fragment nodes, using link information.
+        
+        Args:
+            node_ids: List of node IDs to merge
+            graph: The fragment graph
+            links_to_exclude: List of FragmentLink objects connecting the nodes to merge
+        
+        Returns:
+            Combined RDKit molecule, or None if reconstruction fails
+        """
+        if not node_ids or not hasattr(graph, 'original_mol'):
+            return None
+        
+        if not hasattr(graph, 'cleaved_bond_indices') or not hasattr(graph, 'bond_info'):
+            return None
+        
+        try:
+            # Find which bond indices correspond to the links we want to exclude
+            bonds_to_exclude_indices = []
+            
+            for link in links_to_exclude:
+                # Find the bond_info entry that matches this link's original atoms
+                # We need to find which bond connected these fragments
+                for bond_list_idx, (bond_idx, atom1, atom2, linkage_type) in enumerate(graph.bond_info):
+                    # Check if this bond connects the fragments in this link
+                    if hasattr(graph, 'atom_mappings'):
+                        # Find which fragments contain these atoms
+                        frag1 = None
+                        frag2 = None
+                        for frag_idx, atom_indices in enumerate(graph.atom_mappings):
+                            if atom1 in atom_indices:
+                                frag1 = frag_idx
+                            if atom2 in atom_indices:
+                                frag2 = frag_idx
+                        
+                        # If this bond connects the two fragments in the link, exclude it
+                        if (frag1 == link.from_node_id and frag2 == link.to_node_id) or \
+                           (frag1 == link.to_node_id and frag2 == link.from_node_id):
+                            bonds_to_exclude_indices.append(bond_list_idx)
+                            print(f"DEBUG: Excluding {linkage_type.value} bond at index {bond_list_idx} (atoms {atom1}<->{atom2})")
+                            break
+            
+            # Create new bond list excluding the bonds we want to keep
+            new_bond_indices = [
+                bond_idx for i, bond_idx in enumerate(graph.cleaved_bond_indices)
+                if i not in bonds_to_exclude_indices
+            ]
+            
+            print(f"DEBUG reconstruct: Original had {len(graph.cleaved_bond_indices)} cleaved bonds, "
+                  f"excluding {len(bonds_to_exclude_indices)} bonds, new list has {len(new_bond_indices)} bonds")
+            
+            # Re-fragment with the modified bond list
+            if not new_bond_indices:
+                # No bonds to cleave - return whole molecule
+                return graph.original_mol
+            
+            fragmented_mol = Chem.FragmentOnBonds(graph.original_mol, new_bond_indices, addDummies=True)
+            fragments = Chem.GetMolFrags(fragmented_mol, asMols=True, sanitizeFrags=True)
+            new_atom_mappings = Chem.GetMolFrags(fragmented_mol, asMols=False, fragsMolAtomMapping=True)
+            
+            # Find which new fragment contains atoms from our target nodes
+            # Look for the fragment that contains atoms from the first node we want to merge
+            sorted_nodes = sorted(node_ids)
+            first_node_atoms = set(graph.atom_mappings[sorted_nodes[0]])
+            
+            target_fragment_idx = None
+            for new_frag_idx, new_atoms in enumerate(new_atom_mappings):
+                # Check if this new fragment contains any atoms from our first target node
+                if first_node_atoms & set(new_atoms):
+                    target_fragment_idx = new_frag_idx
+                    break
+            
+            print(f"DEBUG reconstruct: Got {len(fragments)} fragments after re-fragmentation, "
+                  f"target_fragment_idx={target_fragment_idx}")
+            
+            if target_fragment_idx is not None and target_fragment_idx < len(fragments):
+                clean_frag = self._clean_fragment(fragments[target_fragment_idx])
+                return clean_frag if clean_frag else fragments[target_fragment_idx]
+            
+            return None
+        
+        except Exception as e:
+            print(f"DEBUG reconstruct: Exception: {e}")
+            return None
+    
     def _reconstruct_fragment(self, node_ids: list, graph: FragmentGraph) -> Chem.Mol:
         """
         Reconstruct a molecule by combining multiple fragment nodes.
@@ -391,7 +479,7 @@ class FragmentProcessor:
 
     def recover_unmatched_fragments(self, graph: FragmentGraph, matcher) -> bool:
         """
-        Try to recover unmatched fragments by merging with neighbors.
+        Try to recover unmatched fragments by merging with neighbors based on graph links.
         Returns True if any merges were successful.
         """
         # Identify unmatched nodes
@@ -413,33 +501,33 @@ class FragmentProcessor:
             if node_id not in graph.nodes:
                 continue
             
-            # Get neighbors
+            # Get neighbors from graph links (returns list of (neighbor_id, linkage_type))
             neighbors = graph.get_neighbors(node_id)
-            neighbor_ids = [n[0] for n in neighbors]
             
-            if not neighbor_ids:
+            if not neighbors:
+                print(f"DEBUG: Node {node_id} has no neighbors")
                 continue
             
-            # Separate left and right neighbors (assuming sequential order)
-            left_neighbors = [n for n in neighbor_ids if n < node_id]
-            right_neighbors = [n for n in neighbor_ids if n > node_id]
+            print(f"DEBUG: Node {node_id} neighbors: {[(n[0], n[1].value) for n in neighbors]}")
             
-            # Try merge combinations: left only, right only, both
-            merge_attempts = []
-            
-            if left_neighbors:
-                merge_attempts.append([left_neighbors[0], node_id])
-            if right_neighbors:
-                merge_attempts.append([node_id, right_neighbors[0]])
-            if left_neighbors and right_neighbors:
-                merge_attempts.append([left_neighbors[0], node_id, right_neighbors[0]])
-            
-            # Try each merge combination
-            for nodes_to_merge in merge_attempts:
-                print(f"DEBUG: Trying to merge nodes {nodes_to_merge}")
+            # Try merging with each individual neighbor first
+            for neighbor_id, linkage_type in neighbors:
+                if neighbor_id not in graph.nodes:
+                    continue
+                    
+                nodes_to_merge = sorted([node_id, neighbor_id])
+                print(f"DEBUG: Trying to merge nodes {nodes_to_merge} (via {linkage_type.value} bond)")
+                
+                # Find the links between nodes we're merging
+                links_to_exclude = []
+                for link in graph.links:
+                    from_in = link.from_node_id in nodes_to_merge
+                    to_in = link.to_node_id in nodes_to_merge
+                    if from_in and to_in:
+                        links_to_exclude.append(link)
                 
                 # Reconstruct combined molecule
-                combined_mol = self._reconstruct_fragment(nodes_to_merge, graph)
+                combined_mol = self._reconstruct_fragment_with_links(nodes_to_merge, graph, links_to_exclude)
                 if not combined_mol:
                     print(f"DEBUG: Failed to reconstruct molecule for {nodes_to_merge}")
                     continue
@@ -447,7 +535,7 @@ class FragmentProcessor:
                 print(f"DEBUG: Reconstructed mol with {combined_mol.GetNumAtoms()} atoms")
                 
                 # Count expected connections for this merged fragment
-                # Get all unique neighbors of the merged set
+                # Get all unique neighbors of the merged set (excluding internal connections)
                 all_neighbors = set()
                 for nid in nodes_to_merge:
                     if nid in graph.nodes:
@@ -465,7 +553,7 @@ class FragmentProcessor:
                 if monomer:
                     print(f"DEBUG: SUCCESS! Matched to {monomer.symbol}")
                     # Success! Create new merged node
-                    new_node_id = min(nodes_to_merge)  # Use lowest ID
+                    new_node_id = min(nodes_to_merge)
                     new_node = FragmentNode(new_node_id, combined_mol)
                     new_node.monomer = monomer
                     
@@ -473,9 +561,12 @@ class FragmentProcessor:
                     self._merge_nodes_in_graph(graph, nodes_to_merge, new_node)
                     
                     had_changes = True
-                    break  # Stop trying other combinations for this node
+                    break  # Stop trying other neighbors for this node
                 else:
                     print(f"DEBUG: No match found for merge {nodes_to_merge}")
+            
+            if had_changes:
+                break  # Restart from beginning after a successful merge
         
         return had_changes
 
