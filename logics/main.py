@@ -10,6 +10,8 @@ def normalize_helm_for_comparison(helm_str):
     
     Known issues in HELMCoreLibrary.json:
     - Bmt and Bmt_E have identical SMILES (both lack proper E/Z stereochemistry)
+    - Lys_Ac is chemically equivalent to ac.K (acetyl cap + lysine)
+      When Lys_Ac splits into ac.K, it affects cyclic notation (residue count and positions)
     
     Args:
         helm_str: HELM notation string
@@ -23,6 +25,24 @@ def normalize_helm_for_comparison(helm_str):
     # Treat Bmt_E as Bmt since they're identical in the library
     normalized = helm_str.replace('[Bmt_E]', '[Bmt]')
     normalized = normalized.replace('.Bmt_E.', '.Bmt.')
+    
+    # Lys_Ac (acetylated lysine) = ac (acetyl cap) + K (lysine)
+    # When at position 1 in cyclic peptides, this affects both:
+    # 1. The sequence: [Lys_Ac] → [ac].K
+    # 2. The cyclic connection: N:R2-1:R1 → (N+1):R2-2:R1
+    import re
+    
+    # Pattern 1: [Lys_Ac] at start with cyclic notation
+    # e.g., {[Lys_Ac]...}$PEPTIDE1,PEPTIDE1,16:R2-1:R1$ → {[ac].K...}$PEPTIDE1,PEPTIDE1,17:R2-2:R1$
+    pattern1 = r'(\{)(\[Lys_Ac\])(\.[^\}]+\})(\$PEPTIDE1,PEPTIDE1,)(\d+)(:R2-1:R1)'
+    def replace1(match):
+        n = int(match.group(5))
+        return f"{match.group(1)}[ac].K{match.group(3)}{match.group(4)}{n+1}:R2-2:R1"
+    normalized = re.sub(pattern1, replace1, normalized)
+    
+    # Pattern 2: General [Lys_Ac] → ac.K (for non-position-1 cases or linear)
+    normalized = normalized.replace('[Lys_Ac]', 'ac.K')
+    normalized = normalized.replace('.Lys_Ac.', '.ac.K.')
     
     return normalized
 

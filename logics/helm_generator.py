@@ -54,9 +54,32 @@ class HELMGenerator:
         connections = []
         
         if is_cyclic:
-            # Add cyclic connection (last residue R2 to first residue R1)
-            num_residues = len(ordered_nodes)
-            connections.append(f"PEPTIDE1,PEPTIDE1,{num_residues}:R2-1:R1")
+            # Find the actual cyclic peptide bond (last residue connects back to beginning)
+            # This handles cases where N-terminal caps (like 'ac') are at position 1
+            last_id = ordered_nodes[-1].id
+            first_few_ids = [ordered_nodes[i].id for i in range(min(3, len(ordered_nodes)))]
+            
+            for link in graph.links:
+                if link.linkage_type == LinkageType.PEPTIDE:
+                    # Check if this is the cyclic bond (last to one of first few)
+                    is_cyclic_bond = False
+                    from_id, to_id = None, None
+                    
+                    if link.from_node_id == last_id and link.to_node_id in first_few_ids:
+                        from_id, to_id = link.from_node_id, link.to_node_id
+                        is_cyclic_bond = True
+                    elif link.to_node_id == last_id and link.from_node_id in first_few_ids:
+                        from_id, to_id = link.to_node_id, link.from_node_id
+                        is_cyclic_bond = True
+                    
+                    if is_cyclic_bond:
+                        # Find positions (1-indexed)
+                        from_pos = next((i + 1 for i, n in enumerate(ordered_nodes) if n.id == from_id), None)
+                        to_pos = next((i + 1 for i, n in enumerate(ordered_nodes) if n.id == to_id), None)
+                        
+                        if from_pos and to_pos:
+                            connections.append(f"PEPTIDE1,PEPTIDE1,{from_pos}:R2-{to_pos}:R1")
+                            break
         
         # Add disulfide bridges
         for link in graph.links:

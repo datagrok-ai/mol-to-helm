@@ -150,7 +150,8 @@ class FragmentGraph:
     def is_cyclic(self) -> bool:
         """
         Detect if the peptide is cyclic.
-        A cyclic peptide has a peptide bond connecting the last residue back to the first.
+        A cyclic peptide has a peptide bond connecting the last residue back to near the beginning.
+        Handles cases where N-terminal caps (like 'ac' from Lys_Ac) create an extra fragment at position 0.
         """
         if len(self.nodes) < 3:
             return False
@@ -160,15 +161,19 @@ class FragmentGraph:
         if len(ordered) < 3:
             return False
         
-        first_id = ordered[0].id
+        # Get the last node ID
         last_id = ordered[-1].id
         
-        # Check if there's a peptide link between last and first
+        # For a cyclic peptide, the last residue should connect back to one of the first few residues
+        # (usually first, but could be second if there's an N-terminal cap like 'ac')
+        # Check if last node has a peptide bond to any of the first 3 nodes
+        first_few_ids = [ordered[i].id for i in range(min(3, len(ordered)))]
+        
         for link in self.links:
             if link.linkage_type == LinkageType.PEPTIDE:
-                # Check both directions
-                if (link.from_node_id == last_id and link.to_node_id == first_id) or \
-                   (link.from_node_id == first_id and link.to_node_id == last_id):
+                # Check if link connects last node to one of the first few nodes
+                if (link.from_node_id == last_id and link.to_node_id in first_few_ids) or \
+                   (link.to_node_id == last_id and link.from_node_id in first_few_ids):
                     return True
         
         return False
