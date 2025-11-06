@@ -38,30 +38,45 @@ class HELMGenerator:
         ordered_nodes = graph.get_ordered_nodes()
         sequence_symbols = [node.monomer.symbol if node.monomer else "X" for node in ordered_nodes]
         
-        # Generate linear peptide notation
-        sequence = ".".join(sequence_symbols)
+        # Check if cyclic
+        is_cyclic = graph.is_cyclic()
         
-        # Check for disulfide bridges or other non-peptide bonds
-        has_special_bonds = any(
-            link.linkage_type != LinkageType.PEPTIDE 
-            for link in graph.links
-        )
+        # Generate sequence notation
+        if is_cyclic:
+            # Cyclic: wrap each monomer in brackets
+            sequence = ".".join([f"[{symbol}]" for symbol in sequence_symbols])
+        else:
+            # Linear: no brackets
+            sequence = ".".join(sequence_symbols)
         
-        if has_special_bonds:
-            # Add connection notation for disulfide bridges
-            connections = []
-            for link in graph.links:
-                if link.linkage_type == LinkageType.DISULFIDE:
-                    # Format: PEPTIDE1,PEPTIDE1,from_idx:R3-to_idx:R3
-                    connections.append(
-                        f"PEPTIDE1,PEPTIDE1,{link.from_node_id + 1}:R3-{link.to_node_id + 1}:R3"
-                    )
-            
-            if connections:
-                connection_str = "|".join(connections)
-                helm = f"PEPTIDE1{{{sequence}}}${connection_str}$$$V2.0"
-            else:
-                helm = f"PEPTIDE1{{{sequence}}}$$$$"
+        # Collect non-sequential connections (disulfide bridges, cyclic bonds, etc.)
+        connections = []
+        
+        if is_cyclic:
+            # Add cyclic connection (last residue R2 to first residue R1)
+            num_residues = len(ordered_nodes)
+            connections.append(f"PEPTIDE1,PEPTIDE1,{num_residues}:R2-1:R1")
+        
+        # Add disulfide bridges
+        for link in graph.links:
+            if link.linkage_type == LinkageType.DISULFIDE:
+                # Get positions in ordered sequence (1-indexed)
+                from_pos = None
+                to_pos = None
+                for i, node in enumerate(ordered_nodes):
+                    if node.id == link.from_node_id:
+                        from_pos = i + 1
+                    if node.id == link.to_node_id:
+                        to_pos = i + 1
+                
+                if from_pos and to_pos:
+                    # Format: PEPTIDE1,PEPTIDE1,from_pos:R3-to_pos:R3
+                    connections.append(f"PEPTIDE1,PEPTIDE1,{from_pos}:R3-{to_pos}:R3")
+        
+        # Generate final HELM notation
+        if connections:
+            connection_str = "|".join(connections)
+            helm = f"PEPTIDE1{{{sequence}}}${connection_str}$$$V2.0"
         else:
             helm = f"PEPTIDE1{{{sequence}}}$$$$"
         

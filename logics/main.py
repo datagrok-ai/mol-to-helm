@@ -86,18 +86,18 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
     if failed_tests:
         print(f"Failed tests: {failed_tests}")
     else:
-        print("All tests passed! ✓")
+        print("All tests passed!")
     print("=" * 60)
 
 if __name__ == "__main__":
 
-    # Test problems
-    test_peptides(
-        filename='PROBLEMS.csv',
-        test_name='problems',
-        molfile_column='molfile(HELM)',
-        helm_column='HELM'
-    )
+    # # Test problems
+    # test_peptides(
+    #     filename='PROBLEMS.csv',
+    #     test_name='problems',
+    #     molfile_column='molfile(HELM)',
+    #     helm_column='HELM'
+    # )
 
     # # Test linear peptides
     # test_peptides(
@@ -107,13 +107,13 @@ if __name__ == "__main__":
     #     helm_column='HELM'
     # )
     
-    # # Test cyclic peptides
-    # test_peptides(
-    #     filename='HELM_cyclic.csv',
-    #     test_name='Cyclic Peptides',
-    #     molfile_column='molfile(sequence)',
-    #     helm_column='sequence'
-    # )
+    # Test cyclic peptides
+    test_peptides(
+        filename='HELM_cyclic.csv',
+        test_name='Cyclic Peptides',
+        molfile_column='molfile(sequence)',
+        helm_column='sequence'
+    )
     
     # # Test BILN peptides
     # test_peptides(

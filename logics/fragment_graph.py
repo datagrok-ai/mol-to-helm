@@ -147,6 +147,32 @@ class FragmentGraph:
             for node in ordered_nodes
         ]
     
+    def is_cyclic(self) -> bool:
+        """
+        Detect if the peptide is cyclic.
+        A cyclic peptide has a peptide bond connecting the last residue back to the first.
+        """
+        if len(self.nodes) < 3:
+            return False
+        
+        # Get ordered nodes
+        ordered = self.get_ordered_nodes()
+        if len(ordered) < 3:
+            return False
+        
+        first_id = ordered[0].id
+        last_id = ordered[-1].id
+        
+        # Check if there's a peptide link between last and first
+        for link in self.links:
+            if link.linkage_type == LinkageType.PEPTIDE:
+                # Check both directions
+                if (link.from_node_id == last_id and link.to_node_id == first_id) or \
+                   (link.from_node_id == first_id and link.to_node_id == last_id):
+                    return True
+        
+        return False
+    
     def __len__(self):
         return len(self.nodes)
     
