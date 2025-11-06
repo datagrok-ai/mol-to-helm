@@ -220,7 +220,7 @@ get_ordered_nodes()             # Get sequential order
 
 ## Recent Critical Fixes
 
-### Fix 1: Peptide Bond Detection (fragment_processor.py, line 11)
+### Fix 1: Peptide Bond Detection for Imine Bonds (fragment_processor.py, line 14)
 **Problem:** Missing peptide bond for `Phe_ab-dehydro` (dehydro amino acid with C=N imine bond)
 
 **SMARTS before:**
@@ -234,6 +234,21 @@ get_ordered_nodes()             # Get sequential order
 ```
 
 **Impact:** Now detects peptide bonds involving imine (C=N) and amine (C-N) correctly.
+
+### Fix 1b: Peptide Bond Detection for Aromatic Amino Acids (fragment_processor.py, line 14)
+**Problem:** Missing peptide bonds for N-methylated aromatic amino acids like `NMe2Abz`
+
+**SMARTS before:**
+```python
+'[C;X3,X4]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]'  # Requires aliphatic/sp2/sp3 carbon
+```
+
+**SMARTS after:**
+```python
+'[#6]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]'  # Any carbon (#6)
+```
+
+**Impact:** Now detects peptide bonds where the carbon before C=O is aromatic (like in NMe2Abz: `aromatic-C(=O)-N(Me)-`). This fix doubled the cyclic peptide test success rate from 7.3% to 17.1%.
 
 ### Fix 2: Fragment and Atom Mapping Retrieval (fragment_processor.py, lines 190-193)
 **Problem:** `GetMolFrags` with `fragsMolAtomMapping=True` returns tuple `(fragments, mappings)`

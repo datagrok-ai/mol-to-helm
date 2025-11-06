@@ -6,10 +6,12 @@ class BondDetector:
     #GENERALIZATION ITEM: BOND PATTERNS SHOULD BE DERIVED FROM LIBRARY
     def __init__(self):
         # True peptide bond: C and N both in backbone (each bonded to carbons)
-        # Alpha carbons can be sp3 (X4) or sp2 (X3) for dehydroamino acids
-        # Nitrogen can be X2 (proline, imino) or X3 (standard amino)
+        # First carbon can be aliphatic or aromatic (for amino acids like NMe2Abz)
+        # Carbonyl carbon is sp2 (X3)
+        # Nitrogen can be X2 (proline, imino) or X3 (standard amino, N-methyl)
         # N-C bond can be single (-) or double (=) for imine bonds in dehydro amino acids
-        self.peptide_bond = Chem.MolFromSmarts('[C;X3,X4]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]')
+        # Alpha carbon after N can be sp3 (X4) or sp2 (X3) for dehydroamino acids
+        self.peptide_bond = Chem.MolFromSmarts('[#6]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]')
         # True disulfide bond: S-S where each S is bonded to carbon (cysteine residues)
         self.disulfide_bond = Chem.MolFromSmarts('[C;X4]-[S;X2]-[S;X2]-[C;X4]')
         # Primary amine at N-terminus (can be NH2 or NH3+), alpha-C can be sp3 or sp2
