@@ -43,8 +43,9 @@ class HELMGenerator:
         
         # Generate sequence notation
         if is_cyclic:
-            # Cyclic: wrap each monomer in brackets
-            sequence = ".".join([f"[{symbol}]" for symbol in sequence_symbols])
+            # Cyclic: wrap multi-letter monomers in brackets, single-letter ones stay as-is
+            formatted_symbols = [f"[{symbol}]" if len(symbol) > 1 else symbol for symbol in sequence_symbols]
+            sequence = ".".join(formatted_symbols)
         else:
             # Linear: no brackets
             sequence = ".".join(sequence_symbols)

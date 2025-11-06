@@ -383,6 +383,45 @@ if polymer_type != 'PEPTIDE':
 
 **Result:** ✅ Only 322 PEPTIDE monomers loaded
 
+### Fix 7: Cyclic Peptide Detection and HELM Generation (fragment_graph.py, helm_generator.py)
+**Problem:** Cyclic peptides were being treated as linear, missing the head-to-tail connection notation.
+
+**Solution Part 1 - Detection (fragment_graph.py):**
+```python
+def is_cyclic(self) -> bool:
+    """Check if graph has peptide bond connecting last to first residue"""
+    if len(self.nodes) < 3:
+        return False
+    ordered = self.get_ordered_nodes()
+    first_id = ordered[0].id
+    last_id = ordered[-1].id
+    for link in self.links:
+        if link.linkage_type == LinkageType.PEPTIDE:
+            if (link.from_node_id == last_id and link.to_node_id == first_id) or \
+               (link.from_node_id == first_id and link.to_node_id == last_id):
+                return True
+    return False
+```
+
+**Solution Part 2 - HELM Notation (helm_generator.py):**
+```python
+is_cyclic = graph.is_cyclic()
+
+if is_cyclic:
+    # Add square brackets for multi-letter monomers, leave single-letter as-is
+    formatted_symbols = [f"[{symbol}]" if len(symbol) > 1 else symbol for symbol in sequence_symbols]
+    sequence = ".".join(formatted_symbols)
+    # Add cyclic connection
+    connections.append(f"PEPTIDE1,PEPTIDE1,{num_residues}:R2-1:R1")
+```
+
+**Result:** 
+- ✅ Cyclic peptides correctly identified
+- ✅ HELM includes `$PEPTIDE1,PEPTIDE1,N:R2-1:R1$$$V2.0`
+- ✅ Single-letter monomers (G, V, I, etc.) without brackets: `.G.` not `.[G].`
+- ✅ Multi-letter monomers with brackets: `.[NMe2Abz].`
+- ✅ Pass rate improved from 15% → 35% (8 tests were correct but failed on formatting)
+
 ---
 
 ## Key Files and Their Roles

@@ -95,8 +95,8 @@ if __name__ == "__main__":
     # test_peptides(
     #     filename='PROBLEMS.csv',
     #     test_name='problems',
-    #     molfile_column='molfile(HELM)',
-    #     helm_column='HELM'
+    #     molfile_column='molfile(sequence)',
+    #     helm_column='sequence'
     # )
 
     # # Test linear peptides
