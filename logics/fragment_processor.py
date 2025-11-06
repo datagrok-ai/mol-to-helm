@@ -213,23 +213,43 @@ class FragmentProcessor:
                     fragment_nodes.append((i, node))
 
             # Create links between fragments based on the actual cleaved bonds
-            # Build mapping: original atom index → fragment index
-            atom_to_fragment = {}
-            for frag_idx, atom_indices in enumerate(atom_mappings):
-                for atom_idx in atom_indices:
-                    atom_to_fragment[atom_idx] = frag_idx
+            # Build mapping: original atom index → (fragment_idx, new_atom_idx_in_fragment)
+            atom_to_fragment_and_idx = {}
+            for frag_idx, original_atom_indices in enumerate(atom_mappings):
+                for new_idx_in_frag, original_atom_idx in enumerate(original_atom_indices):
+                    atom_to_fragment_and_idx[original_atom_idx] = (frag_idx, new_idx_in_frag)
+            
+            print(f"DEBUG: Processing {len(bond_info)} cleaved bonds to create links")
+            print(f"DEBUG: atom_to_fragment_and_idx has {len(atom_to_fragment_and_idx)} entries")
             
             # For each cleaved bond, determine which fragments it connects
-            for bond_idx, atom1, atom2, linkage_type in bond_info:
-                # Find which fragments contain these atoms
-                frag1 = atom_to_fragment.get(atom1)
-                frag2 = atom_to_fragment.get(atom2)
+            link_count = 0
+            for bond_idx, atom1_orig, atom2_orig, linkage_type in bond_info:
+                # Find which fragments contain these atoms and their new indices
+                frag1_info = atom_to_fragment_and_idx.get(atom1_orig)
+                frag2_info = atom_to_fragment_and_idx.get(atom2_orig)
                 
-                if frag1 is not None and frag2 is not None and frag1 != frag2:
-                    # These atoms are in different fragments, so the bond connects them
-                    link = FragmentLink(frag1, frag2, linkage_type)
-                    graph.add_link(link)
-                    print(f"DEBUG: Added {linkage_type.value.upper()} link between fragments {frag1} and {frag2}")
+                if frag1_info is None or frag2_info is None:
+                    print(f"DEBUG: Skipping bond atoms {atom1_orig}-{atom2_orig}: not found in fragments")
+                    continue
+                
+                frag1, atom1_new = frag1_info
+                frag2, atom2_new = frag2_info
+                    
+                if frag1 == frag2:
+                    print(f"DEBUG: Skipping bond atoms {atom1_orig}-{atom2_orig}: both in same fragment {frag1}")
+                    continue
+                
+                # These atoms are in different fragments, so the bond connects them
+                # Store the NEW indices (within each fragment) for reconstruction
+                link = FragmentLink(frag1, frag2, linkage_type, 
+                                   from_atom_idx=atom1_new, to_atom_idx=atom2_new)
+                graph.add_link(link)
+                link_count += 1
+                print(f"DEBUG: Link {link_count}: {linkage_type.value.upper()} frag{frag1}<->frag{frag2} "
+                      f"orig_atoms({atom1_orig}<->{atom2_orig}) frag_atoms({atom1_new}<->{atom2_new})")
+            
+            print(f"DEBUG: Created {link_count} links total")
 
             return graph
 
