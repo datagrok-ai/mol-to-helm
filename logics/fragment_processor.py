@@ -238,18 +238,19 @@ class FragmentProcessor:
                 frag1, atom1_new = frag1_info
                 frag2, atom2_new = frag2_info
                     
-                if frag1 == frag2:
-                    print(f"DEBUG: Skipping bond atoms {atom1_orig}-{atom2_orig}: both in same fragment {frag1}")
-                    continue
-                
-                # These atoms are in different fragments, so the bond connects them
-                # Store the NEW indices (within each fragment) for reconstruction
+                # Create link even if both atoms are in same fragment (internal bond like in Phe_4Sdihydroorotamido)
+                # This creates a "self-link" that will be used during recovery to reconstruct the monomer
                 link = FragmentLink(frag1, frag2, linkage_type, 
                                    from_atom_idx=atom1_new, to_atom_idx=atom2_new)
                 graph.add_link(link)
                 link_count += 1
-                print(f"DEBUG: Link {link_count}: {linkage_type.value.upper()} frag{frag1}<->frag{frag2} "
-                      f"orig_atoms({atom1_orig}<->{atom2_orig}) frag_atoms({atom1_new}<->{atom2_new})")
+                
+                if frag1 == frag2:
+                    print(f"DEBUG: Link {link_count}: {linkage_type.value.upper()} SELF-LINK frag{frag1} "
+                          f"orig_atoms({atom1_orig}<->{atom2_orig}) frag_atoms({atom1_new}<->{atom2_new})")
+                else:
+                    print(f"DEBUG: Link {link_count}: {linkage_type.value.upper()} frag{frag1}<->frag{frag2} "
+                          f"orig_atoms({atom1_orig}<->{atom2_orig}) frag_atoms({atom1_new}<->{atom2_new})")
             
             print(f"DEBUG: Created {link_count} links total")
 

@@ -265,7 +265,25 @@ fragments = Chem.GetMolFrags(fragmented_mol, asMols=True, sanitizeFrags=True)
 atom_mappings = Chem.GetMolFrags(fragmented_mol, asMols=False, fragsMolAtomMapping=True)
 ```
 
-### Fix 3: Link Creation with Correct Linkage Types (fragment_processor.py, lines 216-250)
+### Fix 3: Self-Links for Internal Bonds (fragment_processor.py, lines 238-253)
+**Problem:** Monomers with internal amide/disulfide bonds (like `Phe_4Sdihydroorotamido` or `Lys_Ac`) were being cleaved but both atoms stayed in the same fragment, causing unmatched fragments.
+
+**Solution:** Create "self-links" when a cleaved bond has both atoms in the same fragment:
+```python
+# Create link even if both atoms are in same fragment (internal bond)
+link = FragmentLink(frag1, frag2, linkage_type, ...)
+graph.add_link(link)
+
+if frag1 == frag2:
+    print(f"SELF-LINK frag{frag1}")  # Internal bond to be recovered
+```
+
+**Impact:** 
+- ✅ `Phe_4Sdihydroorotamido` now recognized (has internal dihydroorotamido → phenyl amide)
+- ✅ Recovery mechanism detects neighbors like `[(4, 'peptide'), (5, 'peptide'), (6, 'peptide')]` where node 5 is a self-reference
+- ✅ Merging `[5, 5]` re-forms the internal bond and successfully matches to library
+
+### Fix 4: Link Creation with Correct Linkage Types (fragment_processor.py)
 **Problem:** Was naively creating peptide links for all consecutive fragments
 
 **Before (wrong):**
@@ -567,6 +585,14 @@ Results:
 - Not all consecutive fragments are connected by peptide bonds
 - Disulfide bridges can connect any two fragments
 - Must use bond_info to create correct link types
+
+### 6. Self-Links Handle Internal Bonds
+- Some monomers have internal bonds that match our cleavage patterns
+- Example: `Phe_4Sdihydroorotamido` has an internal amide bond (dihydroorotamido → phenyl)
+- When RDKit cleaves such bonds, both atoms stay in the same fragment
+- Solution: Create a "self-link" (fragment X → fragment X)
+- Recovery detects self-links as neighbors: `neighbors = [(4, 'peptide'), (5, 'peptide'), (6, 'peptide')]`
+- Merging `[5, 5]` re-forms the internal bond and successfully matches
 
 ---
 
