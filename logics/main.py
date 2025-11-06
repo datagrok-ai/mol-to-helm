@@ -4,6 +4,29 @@ import time
 from pipeline import convert_molecules_batch
 
 
+def normalize_helm_for_comparison(helm_str):
+    """
+    Normalize HELM string for comparison by handling known library duplicates.
+    
+    Known issues in HELMCoreLibrary.json:
+    - Bmt and Bmt_E have identical SMILES (both lack proper E/Z stereochemistry)
+    
+    Args:
+        helm_str: HELM notation string
+    
+    Returns:
+        Normalized HELM string
+    """
+    if not helm_str:
+        return helm_str
+    
+    # Treat Bmt_E as Bmt since they're identical in the library
+    normalized = helm_str.replace('[Bmt_E]', '[Bmt]')
+    normalized = normalized.replace('.Bmt_E.', '.Bmt.')
+    
+    return normalized
+
+
 def test_peptides(filename, test_name, molfile_column, helm_column, extra_column=None, library_path=None):
     """
     Generic function to test peptide conversion from molecule to HELM notation.
@@ -65,7 +88,11 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
             print(f"{index + 1:>4}. Refered:   {true_helm}")
             print(f"      Generated: {predicted_helm}")
             
-            if true_helm == predicted_helm:
+            # Normalize both HELM strings for comparison (handles library duplicates like Bmt/Bmt_E)
+            normalized_true = normalize_helm_for_comparison(true_helm)
+            normalized_predicted = normalize_helm_for_comparison(predicted_helm)
+            
+            if normalized_true == normalized_predicted:
                 passed += 1
             else:
                 failed_tests.append(index + 1)
