@@ -90,13 +90,22 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
     print("=" * 60)
 
 if __name__ == "__main__":
-    # Test linear peptides
+
+    # Test problems
     test_peptides(
-        filename='HELM_LINEAR.csv',
-        test_name='Linear Peptides',
+        filename='PROBLEMS.csv',
+        test_name='problems',
         molfile_column='molfile(HELM)',
         helm_column='HELM'
     )
+
+    # # Test linear peptides
+    # test_peptides(
+    #     filename='HELM_LINEAR.csv',
+    #     test_name='Linear Peptides',
+    #     molfile_column='molfile(HELM)',
+    #     helm_column='HELM'
+    # )
     
     # # Test cyclic peptides
     # test_peptides(

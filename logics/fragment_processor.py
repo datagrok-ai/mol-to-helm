@@ -7,7 +7,9 @@ class BondDetector:
     def __init__(self):
         # True peptide bond: C and N both in backbone (each bonded to carbons)
         # Alpha carbons can be sp3 (X4) or sp2 (X3) for dehydroamino acids
-        self.peptide_bond = Chem.MolFromSmarts('[C;X3,X4]-[C;X3](=[O;X1])-[N;X3]-[C;X3,X4]')
+        # Nitrogen can be X2 (proline, imino) or X3 (standard amino)
+        # N-C bond can be single (-) or double (=) for imine bonds in dehydro amino acids
+        self.peptide_bond = Chem.MolFromSmarts('[C;X3,X4]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]')
         # True disulfide bond: S-S where each S is bonded to carbon (cysteine residues)
         self.disulfide_bond = Chem.MolFromSmarts('[C;X4]-[S;X2]-[S;X2]-[C;X4]')
         # Primary amine at N-terminus (can be NH2 or NH3+), alpha-C can be sp3 or sp2
@@ -50,7 +52,7 @@ class BondDetector:
             matches = mol.GetSubstructMatches(self.peptide_bond)
             for match in matches:
                 if len(match) >= 5:
-                    # Pattern: [C;X3,X4]-[C;X3](=[O;X1])-[N;X3]-[C;X3,X4]
+                    # Pattern: [C;X3,X4]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]
                     # match[0]=alpha-C (sp2 or sp3), match[1]=carbonyl-C, match[2]=O, match[3]=N, match[4]=next-alpha-C (sp2 or sp3)
                     c_atom = match[1]  # Carbonyl carbon
                     n_atom = match[3]  # Nitrogen
