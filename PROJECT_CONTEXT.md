@@ -220,7 +220,28 @@ get_ordered_nodes()             # Get sequential order
 
 ## Recent Critical Fixes
 
-### Fix 1: Peptide Bond Detection for Imine Bonds (fragment_processor.py, line 14)
+### Fix 1a: Peptide Bond Detection - Exclude Lactams (fragment_processor.py, line 17)
+**Problem:** Lactam rings (like in `Pyr` - pyroglutamic acid) were being cleaved, incorrectly opening the ring structure.
+
+**Root Cause:** The peptide bond SMARTS matched ANY amide bond `C(=O)-N`, including:
+- Inter-residue peptide bonds (should cleave)
+- Intra-residue lactams (should NOT cleave)
+
+**Solution:** Add ring size constraint to carbonyl carbon:
+```python
+# Before: '[#6]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]'
+# After:  '[#6]-[C;X3;!r5;!r6](=[O;X1])-[N;X2,X3]~[C;X3,X4]'
+#         Exclude if C=O is in 5- or 6-membered ring (lactams)
+```
+
+**Why `!r5;!r6` on carbonyl carbon:**
+- ✅ **Preserves lactams**: In Pyr, the C=O is part of the 5-membered lactam ring
+- ✅ **Allows proline**: In proline, the C=O is OUTSIDE the 5-membered pyrrolidine ring
+- ✅ **Allows macrocycles**: Cyclic peptides have large rings (10+ members), not affected by `!r5;!r6`
+
+**Result:** ✅ `Pyr` now correctly recognized, pass rate improved significantly (26/41 = 63.4%)
+
+### Fix 1b: Peptide Bond Detection for Imine Bonds (fragment_processor.py, line 14)
 **Problem:** Missing peptide bond for `Phe_ab-dehydro` (dehydro amino acid with C=N imine bond)
 
 **SMARTS before:**
