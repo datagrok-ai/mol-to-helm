@@ -45,8 +45,9 @@ class ImportAnalyzer(ast.NodeVisitor):
 def get_python_files(directory: str) -> List[str]:
     """Get all Python files in the directory"""
     python_files = []
+    skipped_files = {'main.py', 'debug_aze_3abz.py', 'debug_hArg.py'}
     for file in os.listdir(directory):
-        if file.endswith('.py') and not file.startswith('__') and not file.endswith('main.py'):
+        if file.endswith('.py') and not file.startswith('__') and not file in skipped_files:
             python_files.append(os.path.join(directory, file))
     return sorted(python_files)
 
