@@ -13,8 +13,8 @@ class BondDetector:
         # This preserves lactams but allows large macrocycles and proline (C=O outside ring)
         # Nitrogen can be X2 (proline, imino) or X3 (standard amino, N-methyl)
         # N-C bond can be single (-) or double (=) for imine bonds in dehydro amino acids
-        # Alpha carbon after N can be sp3 (X4) or sp2 (X3) for dehydroamino acids
-        self.peptide_bond = Chem.MolFromSmarts('[#6]-[C;X3;!r5;!r6](=[O;X1])-[N;X2,X3]~[C;X3,X4]')
+        # Alpha carbon after N can be sp3 (X4) or sp2 (X3) for dehydroamino acids, or aromatic (#6 includes both)
+        self.peptide_bond = Chem.MolFromSmarts('[#6]-[C;X3;!r5;!r6](=[O;X1])-[N;X2,X3]~[#6;X3,X4]')
         # True disulfide bond: S-S where each S is bonded to carbon (cysteine residues)
         self.disulfide_bond = Chem.MolFromSmarts('[C;X4]-[S;X2]-[S;X2]-[C;X4]')
         # Primary amine at N-terminus (can be NH2 or NH3+), alpha-C can be sp3 or sp2
@@ -201,7 +201,6 @@ class FragmentProcessor:
             graph.cleaved_bond_indices = bond_indices
             graph.bond_info = bond_info
             graph.atom_mappings = atom_mappings
-            print(f"DEBUG: Created {len(fragments)} fragments, cleaved {len(bond_indices)} bonds")
 
             # Create nodes for each fragment
             fragment_nodes = []
@@ -224,8 +223,6 @@ class FragmentProcessor:
                 for new_idx_in_frag, original_atom_idx in enumerate(original_atom_indices):
                     atom_to_fragment_and_idx[original_atom_idx] = (frag_idx, new_idx_in_frag)
             
-            print(f"DEBUG: Processing {len(bond_info)} cleaved bonds to create links")
-            print(f"DEBUG: atom_to_fragment_and_idx has {len(atom_to_fragment_and_idx)} entries")
             
             # For each cleaved bond, determine which fragments it connects
             link_count = 0
@@ -511,10 +508,7 @@ class FragmentProcessor:
             neighbors = graph.get_neighbors(node_id)
             
             if not neighbors:
-                print(f"DEBUG: Node {node_id} has no neighbors")
                 continue
-            
-            print(f"DEBUG: Node {node_id} neighbors: {[(n[0], n[1].value) for n in neighbors]}")
             
             # Try merging with each individual neighbor first
             for neighbor_id, linkage_type in neighbors:
@@ -522,7 +516,6 @@ class FragmentProcessor:
                     continue
                     
                 nodes_to_merge = sorted([node_id, neighbor_id])
-                print(f"DEBUG: Trying to merge nodes {nodes_to_merge} (via {linkage_type.value} bond)")
                 
                 # Find the links between nodes we're merging
                 links_to_exclude = []
@@ -551,13 +544,11 @@ class FragmentProcessor:
                                 all_neighbors.add(neighbor_id)
                 
                 num_connections = len(all_neighbors)
-                print(f"DEBUG: Expecting {num_connections} connections")
                 
                 # Try to match the combined fragment (exact match only)
                 monomer = matcher.find_exact_match(combined_mol, num_connections)
                 
                 if monomer:
-                    print(f"DEBUG: SUCCESS! Matched to {monomer.symbol}")
                     # Success! Create new merged node
                     new_node_id = min(nodes_to_merge)
                     new_node = FragmentNode(new_node_id, combined_mol)
@@ -568,8 +559,6 @@ class FragmentProcessor:
                     
                     had_changes = True
                     break  # Stop trying other neighbors for this node
-                else:
-                    print(f"DEBUG: No match found for merge {nodes_to_merge}")
             
             if had_changes:
                 break  # Restart from beginning after a successful merge
