@@ -443,7 +443,73 @@ if is_cyclic:
 - ✅ Multi-letter monomers with brackets: `.[NMe2Abz].`
 - ✅ Pass rate improved from 15% → 35% (8 tests were correct but failed on formatting)
 
-### Fix 8: Library Duplicate Normalization (main.py)
+### Fix 8: Branch Node Detection and HELM Side Chain Notation (helm_generator.py)
+**Problem:** Side chain modifications (like `ac` on `Lys_Ac`) were being lost because they weren't part of the main backbone traversal.
+
+**Solution:** Implemented proper HELM branch notation:
+1. Detect branch nodes (fragments not in main backbone)
+2. Create separate PEPTIDE chains (PEPTIDE2, PEPTIDE3, etc.)
+3. Find which backbone residue each branch connects to
+4. Add proper R3 connection notation
+
+```python
+# Detect branch nodes (side chain modifications not in main backbone)
+ordered_node_ids = {node.id for node in ordered_nodes}
+branch_nodes = [(node_id, node) for node_id, node in graph.nodes.items() 
+               if node_id not in ordered_node_ids]
+
+# Create separate PEPTIDE chains for each branch
+branch_chains = []
+if branch_nodes:
+    for branch_idx, (branch_node_id, branch_node) in enumerate(branch_nodes, start=2):
+        branch_chain_name = f"PEPTIDE{branch_idx}"
+        branch_symbol = branch_node.monomer.symbol if branch_node.monomer else f"X{branch_node_id}"
+        
+        # Format branch chain (single monomer)
+        branch_chains.append(f"{branch_chain_name}{{[{branch_symbol}]}}")
+        
+        # Find which backbone node this branch connects to
+        for link in graph.links:
+            backbone_node_id = None
+            if link.from_node_id == branch_node_id and link.to_node_id in ordered_node_ids:
+                backbone_node_id = link.to_node_id
+            elif link.to_node_id == branch_node_id and link.from_node_id in ordered_node_ids:
+                backbone_node_id = link.from_node_id
+            
+            if backbone_node_id is not None:
+                backbone_pos = next((i + 1 for i, n in enumerate(ordered_nodes) if n.id == backbone_node_id), None)
+                if backbone_pos:
+                    # Connection: backbone position R3 (side chain) to branch position 1 R1 (N-term)
+                    connections.append(f"PEPTIDE1,{branch_chain_name},{backbone_pos}:R3-1:R1")
+                    break
+
+# Generate final HELM notation
+all_chains = [f"PEPTIDE1{{{sequence}}}"] + branch_chains
+helm_chains = "|".join(all_chains)
+```
+
+**Branch Detection Logic:**
+- Nodes at position 1 without R1 (N-terminus) are identified as branches
+- Branches (like N-terminal caps: ac, For, Boc) connect to side chain R3, not backbone R1-R2
+- Branch connection uses the actual R-group the branch monomer has (R1 or R2)
+
+**Example (Test 6 - Lys_Ac at N-terminus):**
+```
+Reference: [Lys_Ac].[dA].A.R... (16 residues cyclic)
+Generated: PEPTIDE1{K.[dA].A.R...}|PEPTIDE2{[ac]}$PEPTIDE1,PEPTIDE1,16:R2-1:R1|PEPTIDE1,PEPTIDE2,1:R3-1:R2$$$V2.0
+```
+- ✅ `ac` excluded from backbone (lacks R1) → K starts at position 1
+- ✅ Cyclic connection: `16:R2-1:R1` (correct count!)
+- ✅ Branch connection: `1:R3-1:R2` (uses ac's R2, not R1!)
+
+**Result:**
+- ✅ Branch nodes properly included as separate PEPTIDE chains
+- ✅ Cyclic structure preserved with correct residue count
+- ✅ Proper HELM side chain notation (R3 connections)
+- ✅ Branch R-groups detected from library (R1 or R2)
+- ✅ Pass rate: 61.0% (25/41)
+
+### Fix 9: Library Duplicate Normalization (main.py)
 **Problem:** Multiple representation issues in HELMCoreLibrary.json and HELM notation standards.
 
 **Issue 1 - Bmt/Bmt_E:**

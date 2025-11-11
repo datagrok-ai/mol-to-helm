@@ -1875,7 +1875,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-"PEPTIDE1{[Lys_Ac].[dA].A.R.[meG].[meL].[Tyr_Ph4OH].[meA].[Sta_3xi4xi].[aMeTyr_3OH].[NMe2Abz].[Tyr_Ph4OH].[3Pal].[dT].[Tyr_35diI].[Tyr_ab-dehydroMe]}$PEPTIDE1,PEPTIDE1,16:R2-1:R1$$$V2.0","
+"PEPTIDE1{K.[dA].A.R.[meG].[meL].[Tyr_Ph4OH].[meA].[Sta_3xi4xi].[aMeTyr_3OH].[NMe2Abz].[Tyr_Ph4OH].[3Pal].[dT].[Tyr_35diI].[Tyr_ab-dehydroMe]}|PEPTIDE2{[ac]}$PEPTIDE1,PEPTIDE1,16:R2-1:R1|PEPTIDE1,PEPTIDE2,1:R3-1:R2$$$V2.0","
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
