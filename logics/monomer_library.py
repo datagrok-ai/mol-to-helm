@@ -280,6 +280,9 @@ class MonomerLibrary:
         Find monomer by matching fragment SMILES WITHOUT stereochemistry.
         Used only in recovery for handling poor quality input data.
         
+        Uses molecular graph isomorphism to handle cases where RDKit generates 
+        different canonical SMILES for the same molecule.
+        
         Args:
             fragment_smiles: Canonical SMILES of the fragment  
             num_connections: Number of connections this fragment has in the graph
@@ -287,6 +290,12 @@ class MonomerLibrary:
         Returns:
             MonomerData if match found, None otherwise
         """
+        # Parse fragment molecule once (without stereochemistry)
+        fragment_no_stereo_smiles = remove_stereochemistry_from_smiles(fragment_smiles)
+        fragment_mol = Chem.MolFromSmiles(fragment_no_stereo_smiles)
+        if not fragment_mol:
+            return None
+        
         # Search through all monomers
         for symbol, monomer in self.monomers.items():
             # Skip if monomer doesn't have enough R-groups
@@ -303,12 +312,19 @@ class MonomerLibrary:
                 # Generate SMILES with these R-groups removed (lazy, cached)
                 candidate_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
                 
-                # Stereochemistry-agnostic comparison for poor quality data
+                # Try string comparison first (fast path)
                 candidate_no_stereo = remove_stereochemistry_from_smiles(candidate_smiles)
-                fragment_no_stereo = remove_stereochemistry_from_smiles(fragment_smiles)
                 
-                if candidate_no_stereo == fragment_no_stereo:
+                if candidate_no_stereo == fragment_no_stereo_smiles:
                     return monomer
+                
+                # If string comparison fails, try molecular graph isomorphism (slower but more robust)
+                # This handles cases where RDKit generates different canonical SMILES for same molecule
+                candidate_mol = Chem.MolFromSmiles(candidate_no_stereo)
+                if candidate_mol and fragment_mol.HasSubstructMatch(candidate_mol) and candidate_mol.HasSubstructMatch(fragment_mol):
+                    # Both molecules are substructures of each other = they're the same
+                    if fragment_mol.GetNumAtoms() == candidate_mol.GetNumAtoms():
+                        return monomer
         
         return None
 
