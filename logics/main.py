@@ -154,19 +154,19 @@ if __name__ == "__main__":
     #     helm_column='HELM'
     # )
     
-    # Test cyclic peptides
-    test_peptides(
-        filename='HELM_cyclic.csv',
-        test_name='Cyclic Peptides',
-        molfile_column='molfile(sequence)',
-        helm_column='sequence'
-    )
-    
-    # # Test BILN peptides
+    # # Test cyclic peptides
     # test_peptides(
-    #     filename='BILN_W_HELM.csv',
-    #     test_name='BILN Peptides',
-    #     molfile_column='molfile(BILN)',
-    #     helm_column='helm(BILN)',
-    #     extra_column='BILN'
+    #     filename='HELM_cyclic.csv',
+    #     test_name='Cyclic Peptides',
+    #     molfile_column='molfile(sequence)',
+    #     helm_column='sequence'
     # )
+    
+    # Test BILN peptides
+    test_peptides(
+        filename='BILN_W_HELM_2.csv',
+        test_name='BILN Peptides',
+        molfile_column='molfile(helm(BILN))',
+        helm_column='helm(BILN)',
+        extra_column='BILN'
+    )

@@ -494,8 +494,6 @@ class FragmentProcessor:
         if not unmatched_nodes:
             return False
         
-        print(f"DEBUG: Found {len(unmatched_nodes)} unmatched nodes: {unmatched_nodes}")
-        
         had_changes = False
         
         # Try to recover each unmatched node
