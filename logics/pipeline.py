@@ -69,14 +69,16 @@ def preload_library():
     return processor is not None
 
 
-def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
+def convert_molecules_batch(molecules: list, library_json: str = None, input_type: str = "auto") -> list:
     """
-    Convert a batch of molecules from molfile format to HELM notation.
+    Convert a batch of molecules to HELM notation.
     
     Args:
-        molfiles: List of molfile strings
+        molecules: List of molecule strings (molfiles or SMILES)
         library_json: Optional monomer library as JSON string.
                      If None, uses default cached library from HELMCoreLibrary.json
+        input_type: Type of input molecules - "molfile", "smiles", or "auto" (default).
+                   "auto" will attempt to detect the format automatically.
     
     Returns:
         List of tuples: (success: bool, helm_notation: str)
@@ -90,13 +92,13 @@ def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
             print("Initializing monomer library and processors...")
             if not preload_library():
                 print("ERROR: Failed to load monomer library")
-                return [(False, "Library initialization failed") for _ in molfiles]
+                return [(False, "Library initialization failed") for _ in molecules]
             print()
         
         # Use shared processor instances
         processor, matcher, helm_generator = _get_processors()
         if not processor:
-            return [(False, "") for _ in molfiles]
+            return [(False, "") for _ in molecules]
     else:
         # Load custom library from provided JSON string (no caching)
         try:
@@ -124,7 +126,7 @@ def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
         
         if not library.monomers:
             print("ERROR: No monomers loaded from custom library")
-            return [(False, "Library loading failed") for _ in molfiles]
+            return [(False, "Library loading failed") for _ in molecules]
         
         print(f"Custom library loaded: {len(library.monomers)} monomers")
         
@@ -133,11 +135,46 @@ def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
         matcher = MonomerMatcher(library)
         helm_generator = HELMGenerator()
     
+    # Helper function to detect molecule format
+    def _is_molfile(mol_string: str) -> bool:
+        """Check if string is a molfile (starts with RDKit molfile markers or has multiple lines)"""
+        if not mol_string:
+            return False
+        lines = mol_string.strip().split('\n')
+        # Molfiles typically have multiple lines and specific format
+        if len(lines) > 3:
+            # Check for V2000 or V3000 molfile markers
+            if 'V2000' in mol_string or 'V3000' in mol_string:
+                return True
+            # Check for typical molfile structure (counts line format)
+            if len(lines) > 3:
+                counts_line = lines[3] if len(lines) > 3 else ""
+                # Molfile counts line has specific format with atom/bond counts
+                if len(counts_line) >= 6 and counts_line[:6].replace(' ', '').isdigit():
+                    return True
+        return False
+    
     results = []
     
-    for i in range(len(molfiles)):
-        molfile = molfiles[i]
-        mol = Chem.MolFromMolBlock(molfile)
+    for i in range(len(molecules)):
+        mol_string = molecules[i]
+        
+        # Determine input type and parse molecule
+        if input_type == "auto":
+            # Auto-detect format
+            if _is_molfile(mol_string):
+                mol = Chem.MolFromMolBlock(mol_string)
+            else:
+                # Assume SMILES if not molfile
+                mol = Chem.MolFromSmiles(mol_string)
+        elif input_type == "molfile":
+            mol = Chem.MolFromMolBlock(mol_string)
+        elif input_type == "smiles":
+            mol = Chem.MolFromSmiles(mol_string)
+        else:
+            results.append((False, f"Invalid input_type: {input_type}"))
+            continue
+        
         if not mol:
             results.append((False, ""))
             continue
@@ -186,3 +223,33 @@ def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
             results.append((False, f"Error: {str(e)}"))
     
     return results
+
+
+def convert_molfiles_to_helm(molfiles: list, library_json: str = None) -> list:
+    """
+    Convert a batch of molfiles to HELM notation.
+    Convenience wrapper for convert_molecules_batch with input_type="molfile".
+    
+    Args:
+        molfiles: List of molfile strings
+        library_json: Optional monomer library as JSON string
+    
+    Returns:
+        List of tuples: (success: bool, helm_notation: str)
+    """
+    return convert_molecules_batch(molfiles, library_json=library_json, input_type="molfile")
+
+
+def convert_smiles_to_helm(smiles_list: list, library_json: str = None) -> list:
+    """
+    Convert a batch of SMILES to HELM notation.
+    Convenience wrapper for convert_molecules_batch with input_type="smiles".
+    
+    Args:
+        smiles_list: List of SMILES strings
+        library_json: Optional monomer library as JSON string
+    
+    Returns:
+        List of tuples: (success: bool, helm_notation: str)
+    """
+    return convert_molecules_batch(smiles_list, library_json=library_json, input_type="smiles")
