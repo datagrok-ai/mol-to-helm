@@ -8,6 +8,7 @@ class HELMGenerator:
     Supports:
     - Linear peptides
     - Cyclic peptides
+    - Multi-chain structures (BILN peptides)
     - Disulfide bridges
     - Custom linkages
     """
@@ -25,6 +26,12 @@ class HELMGenerator:
         """
         Generate HELM notation from a FragmentGraph.
         
+        Supports multi-chain structures (BILN peptides):
+        - Detects all cycles (rings) using SSSR-like algorithm
+        - Each cycle becomes a separate PEPTIDE chain
+        - R1-R2 connections define backbone within each chain
+        - R3 connections link chains together
+        
         Args:
             graph: FragmentGraph containing matched monomers and their connections
         
@@ -34,6 +41,34 @@ class HELMGenerator:
         if len(graph) == 0:
             return ""
         
+        # Find all cycles in the graph (each cycle will be a separate PEPTIDE chain)
+        cycles = graph.find_all_cycles()
+        
+        # Decision: Use multi-chain HELM only if:
+        # 1. Multiple cycles exist (BILN-style structure), OR
+        # 2. There are standalone nodes not in any cycle (attached fragments)
+        
+        if not cycles:
+            # No cycles - simple linear peptide
+            return self._generate_simple_helm(graph)
+        
+        if len(cycles) == 1:
+            # Single cycle - check if there are standalone nodes attached
+            nodes_in_cycle = set(cycles[0])
+            standalone_nodes = [nid for nid in graph.nodes.keys() if nid not in nodes_in_cycle]
+            
+            if not standalone_nodes:
+                # Simple single-cycle peptide - use simple generator
+                return self._generate_simple_helm(graph)
+        
+        # Multi-chain structure detected (multiple cycles or cycle with attachments)
+        return self._generate_multi_chain_helm(graph, cycles)
+    
+    def _generate_simple_helm(self, graph: FragmentGraph) -> str:
+        """
+        Generate HELM for simple linear or single-cycle peptides.
+        This is the original implementation for backward compatibility.
+        """
         # Get ordered sequence of monomers (backbone)
         ordered_nodes_raw = graph.get_ordered_nodes()
         
@@ -42,16 +77,6 @@ class HELMGenerator:
         
         # Filter backbone: nodes that are part of R1-R2 chain are backbone
         # Nodes connected only via R3 (side chain) are branches
-        # 
-        # Logic: A node at position 1 is a branch if:
-        # - It has no R1 (N-terminus) - meaning it's a cap like 'ac' that only has R2
-        # - It only has 1 peptide connection (to the real backbone)
-        # 
-        # Example: [ac].K in cyclic peptide
-        # - 'ac' has only R2, no R1 → it's a cap
-        # - 'ac' connects to K's R3 (side chain), not K's R1 (backbone)
-        # - So 'ac' should be PEPTIDE2, not part of PEPTIDE1
-        
         backbone_nodes = []
         for i, node in enumerate(ordered_nodes_raw):
             is_branch = False
@@ -91,7 +116,6 @@ class HELMGenerator:
         
         if is_cyclic:
             # Find the actual cyclic peptide bond (last residue connects back to beginning)
-            # This handles cases where N-terminal caps (like 'ac') are at position 1
             last_id = ordered_nodes[-1].id
             first_few_ids = [ordered_nodes[i].id for i in range(min(3, len(ordered_nodes)))]
             
@@ -141,14 +165,14 @@ class HELMGenerator:
                 branch_chain_name = f"PEPTIDE{branch_idx}"
                 branch_symbol = branch_node.monomer.symbol if branch_node.monomer else f"X{branch_node_id}"
                 
-                # Format branch chain (single monomer, so no dots needed)
-                if is_cyclic and len(branch_symbol) > 1:
+                # Format branch chain (single monomer)
+                # In cyclic peptides, always use brackets for consistency with reference HELM
+                if is_cyclic:
                     branch_chains.append(f"{branch_chain_name}{{[{branch_symbol}]}}")
                 else:
                     branch_chains.append(f"{branch_chain_name}{{{branch_symbol}}}")
                 
                 # Find which backbone node this branch connects to
-                # Look for links connecting this branch to the main backbone
                 for link in graph.links:
                     backbone_node_id = None
                     if link.from_node_id == branch_node_id and link.to_node_id in ordered_node_ids:
@@ -161,7 +185,6 @@ class HELMGenerator:
                         backbone_pos = next((i + 1 for i, n in enumerate(ordered_nodes) if n.id == backbone_node_id), None)
                         if backbone_pos:
                             # Determine which R-group the branch uses
-                            # If branch has R1, connect to R1; if only R2, connect to R2
                             branch_r_group = "R1"
                             if branch_node.monomer:
                                 if 'R1' in branch_node.monomer.r_groups:
@@ -177,6 +200,114 @@ class HELMGenerator:
         all_chains = [f"PEPTIDE1{{{sequence}}}"] + branch_chains
         helm_chains = "|".join(all_chains)
         
+        if connections:
+            connection_str = "|".join(connections)
+            helm = f"{helm_chains}${connection_str}$$$V2.0"
+        else:
+            helm = f"{helm_chains}$$$$V2.0"
+        
+        return helm
+    
+    def _generate_multi_chain_helm(self, graph: FragmentGraph, cycles: list) -> str:
+        """
+        Generate HELM for multi-chain structures (BILN peptides).
+        
+        Strategy:
+        1. Each cycle becomes a separate PEPTIDE chain
+        2. Nodes not in cycles become additional chains
+        3. R3 connections between chains are added as cross-links
+        """
+        # Identify which nodes belong to which cycles
+        nodes_in_cycles = set()
+        for cycle in cycles:
+            nodes_in_cycles.update(cycle)
+        
+        # Find standalone nodes (not in any cycle)
+        standalone_nodes = [nid for nid in graph.nodes.keys() if nid not in nodes_in_cycles]
+        
+        # Build PEPTIDE chains
+        chains = []
+        chain_node_map = {}  # Maps node_id -> (chain_idx, position_in_chain)
+        
+        # Add cyclic chains
+        for cycle_idx, cycle in enumerate(cycles, start=1):
+            chain_name = f"PEPTIDE{cycle_idx}"
+            # Create sequence from cycle nodes
+            sequence_symbols = []
+            for pos, node_id in enumerate(cycle):
+                node = graph.nodes[node_id]
+                symbol = node.monomer.symbol if node.monomer else f"X{node_id}"
+                sequence_symbols.append(symbol)
+                chain_node_map[node_id] = (cycle_idx, pos + 1)  # 1-indexed position
+            
+            # Format with brackets for multi-letter symbols
+            formatted = [f"[{s}]" if len(s) > 1 else s for s in sequence_symbols]
+            sequence = ".".join(formatted)
+            chains.append(f"{chain_name}{{{sequence}}}")
+        
+        # Add standalone chains (linear fragments not in cycles)
+        next_chain_idx = len(cycles) + 1
+        for node_id in standalone_nodes:
+            chain_name = f"PEPTIDE{next_chain_idx}"
+            node = graph.nodes[node_id]
+            symbol = node.monomer.symbol if node.monomer else f"X{node_id}"
+            chains.append(f"{chain_name}{{{symbol}}}")
+            chain_node_map[node_id] = (next_chain_idx, 1)
+            next_chain_idx += 1
+        
+        # Build connections
+        connections = []
+        
+        # Add cyclic connections (R1-R2 within each cycle)
+        for cycle_idx, cycle in enumerate(cycles, start=1):
+            if len(cycle) >= 3:
+                # Connect last to first
+                chain_name = f"PEPTIDE{cycle_idx}"
+                last_pos = len(cycle)
+                connections.append(f"{chain_name},{chain_name},{last_pos}:R2-1:R1")
+        
+        # Add inter-chain connections (R3 links) and disulfide bridges
+        processed_links = set()
+        for link in graph.links:
+            link_key = tuple(sorted([link.from_node_id, link.to_node_id]))
+            if link_key in processed_links:
+                continue
+            
+            from_chain_info = chain_node_map.get(link.from_node_id)
+            to_chain_info = chain_node_map.get(link.to_node_id)
+            
+            if not from_chain_info or not to_chain_info:
+                continue
+            
+            from_chain, from_pos = from_chain_info
+            to_chain, to_pos = to_chain_info
+            
+            # Skip intra-cycle backbone peptide bonds (already handled by R1-R2 connection)
+            if from_chain == to_chain and link.linkage_type == LinkageType.PEPTIDE:
+                # Check if this is a sequential bond within the cycle
+                cycle = cycles[from_chain - 1] if from_chain <= len(cycles) else []
+                # Sequential bonds: adjacent positions or last-to-first
+                if abs(from_pos - to_pos) == 1 or (from_pos == 1 and to_pos == len(cycle)) or (to_pos == 1 and from_pos == len(cycle)):
+                    processed_links.add(link_key)
+                    continue
+            
+            # Add cross-chain connections or intra-chain disulfide bridges
+            if link.linkage_type == LinkageType.DISULFIDE:
+                # Disulfide uses R3 (side chain cysteine)
+                r_group = "R3"
+            elif link.linkage_type == LinkageType.PEPTIDE:
+                # Cross-chain peptide bond (side chain R3 connection)
+                r_group = "R3"
+            else:
+                r_group = "R3"
+            
+            from_chain_name = f"PEPTIDE{from_chain}"
+            to_chain_name = f"PEPTIDE{to_chain}"
+            connections.append(f"{from_chain_name},{to_chain_name},{from_pos}:{r_group}-{to_pos}:{r_group}")
+            processed_links.add(link_key)
+        
+        # Generate final HELM
+        helm_chains = "|".join(chains)
         if connections:
             connection_str = "|".join(connections)
             helm = f"{helm_chains}${connection_str}$$$V2.0"
@@ -203,4 +334,3 @@ class HELMGenerator:
         helm = f"PEPTIDE1{{{sequence}}}$$$$"
 
         return helm
-

@@ -178,6 +178,73 @@ class FragmentGraph:
         
         return False
     
+    def find_all_cycles(self) -> List[List[int]]:
+        """
+        Find all cycles in the graph using DFS.
+        Returns list of cycles, where each cycle is a list of node IDs.
+        """
+        cycles = []
+        visited = set()
+        rec_stack = set()
+        parent = {}
+        
+        def dfs(node_id: int, path: List[int]):
+            visited.add(node_id)
+            rec_stack.add(node_id)
+            path.append(node_id)
+            
+            # Get peptide bond neighbors
+            neighbors = [n_id for n_id, link_type in self.get_neighbors(node_id) 
+                        if link_type == LinkageType.PEPTIDE]
+            
+            for neighbor_id in neighbors:
+                if neighbor_id not in visited:
+                    parent[neighbor_id] = node_id
+                    dfs(neighbor_id, path[:])
+                elif neighbor_id in rec_stack and neighbor_id != parent.get(node_id):
+                    # Found a cycle - extract it from path
+                    cycle_start_idx = path.index(neighbor_id)
+                    cycle = path[cycle_start_idx:] + [neighbor_id]
+                    # Normalize cycle (start from smallest ID)
+                    min_idx = cycle.index(min(cycle[:-1]))  # Don't include duplicate last element
+                    normalized = cycle[min_idx:-1] + cycle[:min_idx]
+                    if normalized not in cycles:
+                        cycles.append(normalized)
+            
+            rec_stack.remove(node_id)
+        
+        # Try starting DFS from each unvisited node
+        for node_id in self.nodes.keys():
+            if node_id not in visited:
+                parent[node_id] = None
+                dfs(node_id, [])
+        
+        return cycles
+    
+    def get_connected_components(self) -> List[List[int]]:
+        """
+        Find all connected components in the graph.
+        Returns list of components, where each component is a list of node IDs.
+        """
+        visited = set()
+        components = []
+        
+        def dfs_component(node_id: int, component: List[int]):
+            visited.add(node_id)
+            component.append(node_id)
+            neighbors = self.get_neighbors(node_id)
+            for neighbor_id, _ in neighbors:
+                if neighbor_id not in visited:
+                    dfs_component(neighbor_id, component)
+        
+        for node_id in self.nodes.keys():
+            if node_id not in visited:
+                component = []
+                dfs_component(node_id, component)
+                components.append(sorted(component))
+        
+        return components
+    
     def __len__(self):
         return len(self.nodes)
     
