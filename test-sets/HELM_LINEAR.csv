@@ -1,5 +1,5 @@
 HELM,Activity,molfile(HELM)
-PEPTIDE1{meI.hHis.Aca.N.T.dE.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.3075109739681280,"
+PEPTIDE1{meI.hHis.Aca.N.T.dE.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.3075109739681280,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -334,7 +334,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.Cys_SEt.T.dK.Thr_PO3H2.Aca.Tyr_PO3H2.D-Chg.dV.Phe_ab-dehydro.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.7238768534315438,"
+PEPTIDE1{meI.hHis.Aca.Cys_SEt.T.dK.Thr_PO3H2.Aca.Tyr_PO3H2.D-Chg.dV.Phe_ab-dehydro.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.7238768534315438,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -674,7 +674,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{Lys_Boc.hHis.Aca.Cys_SEt.T.dK.Thr_PO3H2.Aca.Tyr_PO3H2.D-Chg.dV.Thr_PO3H2.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.1858112460224372,"
+PEPTIDE1{Lys_Boc.hHis.Aca.Cys_SEt.T.dK.Thr_PO3H2.Aca.Tyr_PO3H2.D-Chg.dV.Thr_PO3H2.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.1858112460224372,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -1027,7 +1027,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.Cys_SEt.T.dK.Thr_PO3H2.Aca.Tyr_PO3H2.D-Chg.dV.Thr_PO3H2.N.D-Orn.D-aThr.Phe_4Me}$$$$,6.2235023908043692,"
+PEPTIDE1{meI.hHis.Aca.Cys_SEt.T.dK.Thr_PO3H2.Aca.Tyr_PO3H2.D-Chg.dV.Thr_PO3H2.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,6.2235023908043692,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -1366,7 +1366,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.Chg.N.D-Orn.D-aThr.Phe_4Me}$$$$,3.8459123763832412,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.Chg.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,3.8459123763832412,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -1704,7 +1704,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_Bn.dV.E.N.dV.Phe_4Me}$$$$,3.2792043882465700,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_Bn.dV.E.N.dV.Phe_4Me}$$$$V2.0,3.2792043882465700,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -2036,7 +2036,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Aze.dV.E.N.dV.Phe_4Me}$$$$,2.1058521529925680,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Aze.dV.E.N.dV.Phe_4Me}$$$$V2.0,2.1058521529925680,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -2341,7 +2341,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.meQ.dV.E.N.dV.Phe_4Me}$$$$,1.8036950016492720,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.meQ.dV.E.N.dV.Phe_4Me}$$$$V2.0,1.8036950016492720,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -2653,7 +2653,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.Oic_3aS-7aS.D-Chg.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$,6.3880602836120888,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.Oic_3aS-7aS.D-Chg.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,6.3880602836120888,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -2977,7 +2977,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.meM.D-Chg.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$,4.4416506433043380,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.meM.D-Chg.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,4.4416506433043380,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -3295,7 +3295,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.Oic_3aS-7aS.Tyr_ab-dehydroMe.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.3285687936154194,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.Oic_3aS-7aS.Tyr_ab-dehydroMe.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.3285687936154194,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -3625,7 +3625,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.meM.Tyr_ab-dehydroMe.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$,4.7063709863309970,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.meM.Tyr_ab-dehydroMe.dV.E.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,4.7063709863309970,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -3949,7 +3949,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.D-Dap.dV.E.N.pnG.Phe_4Me}$$$$,3.5158193717582606,"
+PEPTIDE1{meI.hHis.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.D-Dap.dV.E.N.pnG.Phe_4Me}$$$$V2.0,3.5158193717582606,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -4283,7 +4283,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.D-Cit.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.0234375478603600,"
+PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.D-Cit.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.0234375478603600,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -4599,7 +4599,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.meL.N.D-Orn.D-aThr.Phe_4Me}$$$$,6.3835924418975944,"
+PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.meL.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,6.3835924418975944,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -4911,7 +4911,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.Dsu.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.0660217222581760,"
+PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.Dsu.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.0660217222581760,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -5231,7 +5231,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.T.dK.Thr_PO3H2.D-Thz.D-Tyr_Et.Tyr_ab-dehydroMe.dV.D-Thz.N.D-Orn.D-aThr.Thz.Phe_4Me}$$$$,5.0571307081896508,"
+PEPTIDE1{meI.T.dK.Thr_PO3H2.D-Thz.D-Tyr_Et.Tyr_ab-dehydroMe.dV.D-Thz.N.D-Orn.D-aThr.Thz.Phe_4Me}$$$$V2.0,5.0571307081896508,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -5506,7 +5506,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.dE.N.D-Orn.D-aThr.Phe_4Me}$$$$,4.9769698053714384,"
+PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.dE.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,4.9769698053714384,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -5818,7 +5818,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.meF.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.3473016957612280,"
+PEPTIDE1{meI.Aca.N.T.dK.Thr_PO3H2.Aca.D-Tyr_Et.Tyr_ab-dehydroMe.dV.meF.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.3473016957612280,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -6137,7 +6137,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-PEPTIDE1{meI.dK.Thr_PO3H2.D-Thz.D-Tyr_Et.Tyr_ab-dehydroMe.dV.D-Thz.N.D-Orn.D-aThr.Phe_4Me}$$$$,5.5150849238673824,"
+PEPTIDE1{meI.dK.Thr_PO3H2.D-Thz.D-Tyr_Et.Tyr_ab-dehydroMe.dV.D-Thz.N.D-Orn.D-aThr.Phe_4Me}$$$$V2.0,5.5150849238673824,"
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
