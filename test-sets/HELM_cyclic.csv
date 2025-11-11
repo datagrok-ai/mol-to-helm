@@ -6288,7 +6288,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-"PEPTIDE1{[D-Nle].[pnG].[Phe_34diCl].[aMeTyr].[Dpm].[Dip].[Tyr_35diI].[Ser_PO3H2].[D-2Thi].[Tyr_Bn].[Lys_Ac].[Wil].[hArg].[Tyr_Me].[dA].[dR].[Ac5c]}$PEPTIDE1,PEPTIDE1,17:R2-1:R1$$$V2.0","
+"PEPTIDE1{[D-Nle].[pnG].[Phe_34diCl].[aMeTyr].[Dpm].[Dip].[Tyr_35diI].[Ser_PO3H2].[D-2Thi].[Tyr_Bn].K.[Wil].[hArg].[Tyr_Me].[dA].[dR].[Ac5c]}|PEPTIDE2{[ac]}$PEPTIDE1,PEPTIDE1,17:R2-1:R1|PEPTIDE1,PEPTIDE2,11:R3-1:R2$$$V2.0","
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
@@ -11771,7 +11771,7 @@ M  V30 END COLLECTION
 M  V30 END CTAB
 M  END
 "
-"PEPTIDE1{[Iva].[Phg].[Tyr_3OH].[Hyl_5xi].[D-Pip].[Nva].[D-Ser_tBu].[Phe_4I].[hArg].[dP].[Bmt].V.[4Pal].[Bip].[Lys_Ac].[Phe_34diCl].[Cit].[Dsu].[Phe_4Cl].[Trp_Ome]}$PEPTIDE1,PEPTIDE1,20:R2-1:R1$$$V2.0","
+"PEPTIDE1{[Iva].[Phg].[Tyr_3OH].[Hyl_5xi].[D-Pip].[Nva].[D-Ser_tBu].[Phe_4I].[hArg].[dP].[Bmt].V.[4Pal].[Bip].K.[Phe_34diCl].[Cit].[Dsu].[Phe_4Cl].[Trp_Ome]}|PEPTIDE2{[ac]}$PEPTIDE1,PEPTIDE1,20:R2-1:R1|PEPTIDE1,PEPTIDE2,15:R3-1:R2$$$V2.0","
 Actelion Java MolfileCreator 2.0
 
   0  0  0  0  0  0              0 V3000
