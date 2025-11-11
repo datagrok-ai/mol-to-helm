@@ -509,7 +509,77 @@ Generated: PEPTIDE1{K.[dA].A.R...}|PEPTIDE2{[ac]}$PEPTIDE1,PEPTIDE1,16:R2-1:R1|P
 - ✅ Branch R-groups detected from library (R1 or R2)
 - ✅ Pass rate: 61.0% (25/41)
 
-### Fix 9: Library Duplicate Normalization (main.py)
+### Fix 10: Separate Stereo-Agnostic Recovery Procedure (monomer_library.py, fragment_processor.py, pipeline.py)
+**Problem:** Test 26 had 17 out of 23 chiral centers UNASSIGNED. Fragments without stereochemistry couldn't match library entries with stereochemistry, causing match failures.
+
+**Root Cause:**
+- Input molfiles from some datasets have incomplete stereochemistry assignment
+- Library always has explicit stereochemistry in SMILES
+- Fragment `NC(=O)CC(N)C=O` doesn't match library `NC(=O)C[C@@H](N)C=O`
+
+**Solution:** Added a **separate stereo-agnostic recovery procedure** that runs after regular recovery.
+
+1. Added `remove_stereochemistry_from_smiles()` helper function in `monomer_library.py`:
+```python
+def remove_stereochemistry_from_smiles(smiles: str) -> str:
+    """Remove stereochemistry markers from SMILES string"""
+    smiles_no_stereo = re.sub(r'(@+)', '', smiles)  # Remove @ symbols
+    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)H\]', r'\1', smiles_no_stereo)  # [C@@H] -> C
+    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)\]', r'\1', smiles_no_stereo)  # [C] -> C
+    return smiles_no_stereo
+```
+
+2. Added `find_monomer_by_fragment_smiles_no_stereo()` as separate method (not a fallback)
+
+3. Added new recovery procedure `recover_unmatched_with_stereo_agnostic()` in `fragment_processor.py`:
+```python
+def recover_unmatched_with_stereo_agnostic(self, graph: FragmentGraph, matcher) -> int:
+    """
+    Separate recovery procedure: Try to match remaining unmatched fragments 
+    using stereochemistry-agnostic comparison.
+    Only called after regular recovery attempts have finished.
+    """
+    unmatched_nodes = [node_id for node_id, node in graph.nodes.items() 
+                      if node.monomer.symbol.startswith('X')]
+    
+    matched_count = 0
+    for node_id in unmatched_nodes:
+        # Try stereo-agnostic matching
+        monomer = matcher.monomer_library.find_monomer_by_fragment_smiles_no_stereo(...)
+        if monomer:
+            node.monomer = monomer
+            matched_count += 1
+    
+    return matched_count
+```
+
+4. Updated pipeline flow in `pipeline.py`:
+```python
+# Step 1: Initial exact matching
+# Step 2: Regular recovery (merge fragments, exact matching)
+for attempt in range(max_recovery_attempts):
+    had_changes = processor.recover_unmatched_fragments(graph, matcher)
+    if not had_changes:
+        break
+
+# Step 3: NEW - Stereo-agnostic recovery for remaining unmatched
+stereo_matched = processor.recover_unmatched_with_stereo_agnostic(graph, matcher)
+```
+
+**Why Separate Procedure:**
+- ⚠️ Initial attempt to use stereo-agnostic matching everywhere caused **false positives**
+- ❌ `dI` and `xiIle` both matched as `I` (wrong!)
+- ✅ Separate procedure: strict initial matching → exact recovery → lenient stereo-agnostic recovery
+- ✅ Three-phase approach ensures accuracy first, leniency last
+
+**Result:**
+- ✅ Test 1: `[dI]` and `[xiIle]` preserved correctly (exact matching works)
+- ✅ Test 26: `dN` matched as `N`, `D-Pip` as `Pip` via stereo-agnostic recovery
+- ✅ Pass rate: 61.0% → 68.3% (+7.3%, 3 more tests passing)
+- ✅ No false positives from stereo-agnostic matching
+- ✅ Clean separation of concerns: each recovery phase has its own logic
+
+### Fix 11: Library Duplicate Normalization (main.py)
 **Problem:** Multiple representation issues in HELMCoreLibrary.json and HELM notation standards.
 
 **Issue 1 - Bmt/Bmt_E:**

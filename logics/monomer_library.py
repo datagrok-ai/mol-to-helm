@@ -4,9 +4,33 @@ from collections import defaultdict
 from itertools import combinations
 import json
 import os
+import re
 
 # Suppress RDKit warnings
 RDLogger.DisableLog('rdApp.warning')
+
+def remove_stereochemistry_from_smiles(smiles: str) -> str:
+    """
+    Remove stereochemistry markers from SMILES string.
+    Converts [C@@H], [C@H] to C, etc.
+    
+    This is used for matching when input molecules don't have stereochemistry defined.
+    """
+    if not smiles:
+        return smiles
+    
+    # Remove @ symbols (stereochemistry markers)
+    # Pattern: [@]+ inside brackets
+    smiles_no_stereo = re.sub(r'(@+)', '', smiles)
+    
+    # Also remove H when it's explicit in brackets like [C@@H] -> [C] -> C
+    # But we need to be careful not to remove H from [H] or CH3
+    # After removing @, we might have [CH] which should become C
+    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)H\]', r'\1', smiles_no_stereo)
+    # Handle [C] -> C (single atoms in brackets with no other info)
+    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)\]', r'\1', smiles_no_stereo)
+    
+    return smiles_no_stereo
 
 class MonomerData:
     def __init__(self):
@@ -245,8 +269,45 @@ class MonomerLibrary:
                 # Generate SMILES with these R-groups removed (lazy, cached)
                 candidate_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
                 
-                # Check if it matches the fragment
+                # Check if it matches the fragment (exact match only)
                 if candidate_smiles == fragment_smiles:
+                    return monomer
+        
+        return None
+    
+    def find_monomer_by_fragment_smiles_no_stereo(self, fragment_smiles: str, num_connections: int):
+        """
+        Find monomer by matching fragment SMILES WITHOUT stereochemistry.
+        Used only in recovery for handling poor quality input data.
+        
+        Args:
+            fragment_smiles: Canonical SMILES of the fragment  
+            num_connections: Number of connections this fragment has in the graph
+        
+        Returns:
+            MonomerData if match found, None otherwise
+        """
+        # Search through all monomers
+        for symbol, monomer in self.monomers.items():
+            # Skip if monomer doesn't have enough R-groups
+            if monomer.r_group_count < num_connections:
+                continue
+            
+            # Generate all combinations of num_connections R-groups that could have been removed
+            r_group_labels = list(monomer.r_groups.keys())
+            
+            # For each combination of R-groups that could have been removed
+            for removed_combo in combinations(r_group_labels, num_connections):
+                removed_set = frozenset(removed_combo)
+                
+                # Generate SMILES with these R-groups removed (lazy, cached)
+                candidate_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
+                
+                # Stereochemistry-agnostic comparison for poor quality data
+                candidate_no_stereo = remove_stereochemistry_from_smiles(candidate_smiles)
+                fragment_no_stereo = remove_stereochemistry_from_smiles(fragment_smiles)
+                
+                if candidate_no_stereo == fragment_no_stereo:
                     return monomer
         
         return None

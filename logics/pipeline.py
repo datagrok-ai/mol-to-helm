@@ -171,6 +171,12 @@ def convert_molecules_batch(molfiles: list, library_json: str = None) -> list:
                 if not had_changes:
                     break
             
+            # After regular recovery, try stereo-agnostic matching for remaining unmatched fragments
+            # This handles poor quality data with missing stereochemistry
+            stereo_matched = processor.recover_unmatched_with_stereo_agnostic(graph, matcher)
+            if stereo_matched > 0:
+                print(f"DEBUG: Stereo-agnostic recovery matched {stereo_matched} additional fragments")
+            
             if len(graph.nodes) > 0:
                 helm_notation = helm_generator.generate_helm_from_graph(graph)
                 results.append((True, helm_notation))

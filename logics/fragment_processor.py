@@ -553,7 +553,7 @@ class FragmentProcessor:
                 num_connections = len(all_neighbors)
                 print(f"DEBUG: Expecting {num_connections} connections")
                 
-                # Try to match the combined fragment
+                # Try to match the combined fragment (exact match only)
                 monomer = matcher.find_exact_match(combined_mol, num_connections)
                 
                 if monomer:
@@ -575,4 +575,62 @@ class FragmentProcessor:
                 break  # Restart from beginning after a successful merge
         
         return had_changes
+    
+    def recover_unmatched_with_stereo_agnostic(self, graph: FragmentGraph, matcher) -> int:
+        """
+        Separate recovery procedure: Try to match remaining unmatched fragments 
+        using stereochemistry-agnostic comparison.
+        
+        This handles poor quality input data where stereochemistry is not assigned.
+        Only called after regular recovery attempts have finished.
+        
+        Args:
+            graph: FragmentGraph with some unmatched nodes
+            matcher: MonomerMatcher instance
+        
+        Returns:
+            Number of fragments that were successfully matched
+        """
+        from rdkit import Chem
+        
+        # Find all unmatched nodes (nodes with mock/unknown monomers)
+        unmatched_nodes = []
+        for node_id, node in graph.nodes.items():
+            if node.monomer and (node.monomer.symbol.startswith('X') or 
+                                 node.monomer.name.startswith('Unknown')):
+                unmatched_nodes.append(node_id)
+        
+        if not unmatched_nodes:
+            return 0
+        
+        print(f"DEBUG: Attempting stereo-agnostic recovery for {len(unmatched_nodes)} unmatched nodes")
+        
+        matched_count = 0
+        
+        for node_id in unmatched_nodes:
+            if node_id not in graph.nodes:
+                continue
+            
+            node = graph.nodes[node_id]
+            
+            # Get fragment SMILES
+            fragment_smiles = Chem.MolToSmiles(node.mol, canonical=True)
+            
+            # Count connections
+            neighbors = graph.get_neighbors(node_id)
+            num_connections = len(neighbors)
+            
+            # Try stereo-agnostic matching
+            monomer = matcher.monomer_library.find_monomer_by_fragment_smiles_no_stereo(
+                fragment_smiles, num_connections
+            )
+            
+            if monomer:
+                print(f"DEBUG: Stereo-agnostic match for node {node_id}: {monomer.symbol}")
+                node.monomer = monomer
+                matched_count += 1
+            else:
+                print(f"DEBUG: No stereo-agnostic match for node {node_id}")
+        
+        return matched_count
 
