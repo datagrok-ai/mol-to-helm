@@ -150,26 +150,35 @@ class FragmentGraph:
         return ordered
     
     def _traverse_from_node(self, node_id: int, visited: set, ordered: list):
-        """Helper for depth-first traversal"""
+        """Helper for depth-first traversal with bidirectional link support"""
         if node_id in visited:
             return
-        
+
         visited.add(node_id)
         ordered.append(self.nodes[node_id])
-        
-        # Get peptide bond neighbors first (to maintain chain order)
-        peptide_neighbors = []
-        other_neighbors = []
-        
+
+        # Follow links in BOTH directions but prefer the canonical (from→to)
+        # direction. Link direction depends on bond detection order and is not
+        # guaranteed to match backbone direction (e.g. FC01 stapled peptides).
+        peptide_fwd = []
+        peptide_bwd = []
+        other_fwd = []
+        other_bwd = []
+
         for link in self.links:
             if link.from_node_id == node_id and link.to_node_id not in visited:
                 if link.linkage_type == LinkageType.PEPTIDE:
-                    peptide_neighbors.append(link.to_node_id)
+                    peptide_fwd.append(link.to_node_id)
                 else:
-                    other_neighbors.append(link.to_node_id)
-        
-        # Visit peptide bonds first, then others
-        for neighbor_id in peptide_neighbors + other_neighbors:
+                    other_fwd.append(link.to_node_id)
+            elif link.to_node_id == node_id and link.from_node_id not in visited:
+                if link.linkage_type == LinkageType.PEPTIDE:
+                    peptide_bwd.append(link.from_node_id)
+                else:
+                    other_bwd.append(link.from_node_id)
+
+        # Forward first, backward as fallback
+        for neighbor_id in peptide_fwd + peptide_bwd + other_fwd + other_bwd:
             self._traverse_from_node(neighbor_id, visited, ordered)
     
     def get_fragment_sequence(self) -> List[str]:
@@ -194,21 +203,18 @@ class FragmentGraph:
         if len(ordered) < 3:
             return False
         
-        # Get the last node ID
-        last_id = ordered[-1].id
-        
-        # For a cyclic peptide, the last residue should connect back to one of the first few residues
-        # (usually first, but could be second if there's an N-terminal cap like 'ac')
-        # Check if last node has a peptide bond to any of the first 3 nodes
-        first_few_ids = [ordered[i].id for i in range(min(3, len(ordered)))]
-        
+        # Check if any of the last few residues connect back to any of the first few.
+        # Checking multiple positions on each end handles branch nodes (like 'ac')
+        # that the bidirectional traversal may place at the edges.
+        first_few_ids = set(ordered[i].id for i in range(min(3, len(ordered))))
+        last_few_ids = set(ordered[-i - 1].id for i in range(min(3, len(ordered))))
+
         for link in self.links:
             if link.linkage_type == LinkageType.PEPTIDE:
-                # Check if link connects last node to one of the first few nodes
-                if (link.from_node_id == last_id and link.to_node_id in first_few_ids) or \
-                   (link.to_node_id == last_id and link.from_node_id in first_few_ids):
+                if (link.from_node_id in last_few_ids and link.to_node_id in first_few_ids) or \
+                   (link.to_node_id in last_few_ids and link.from_node_id in first_few_ids):
                     return True
-        
+
         return False
     
     def find_all_cycles(self) -> List[List[int]]:
@@ -369,10 +375,38 @@ class BondDetector:
         bonds = []
         try:
             matches = mol.GetSubstructMatches(self.peptide_bond)
-            for match in matches:
-                if len(match) >= 5:
-                    # Pattern: [C;X3,X4]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]
-                    # match[0]=alpha-C (sp2 or sp3), match[1]=carbonyl-C, match[2]=O, match[3]=N, match[4]=next-alpha-C (sp2 or sp3)
+
+            # Filter out internal amide bonds in CHEM linkers like FC01.
+            # FC01 pattern: C(=O)-N-ArRing-N-C(=O) — two amide bonds connect to the
+            # same aromatic ring via the alpha-C position (match[4]).
+            # Real aromatic amino acids (3Abz) only have ONE such bond per ring.
+            skip_indices = set()
+            ring_info = mol.GetRingInfo()
+            rings = ring_info.AtomRings()
+
+            # Map: ring_frozenset -> list of match indices where match[4] is aromatic on that ring
+            # Only consider small rings (5-6 atoms) — large macrocycles should not be filtered
+            ring_to_matches = {}
+            for i, match in enumerate(matches):
+                if len(match) < 5:
+                    continue
+                alpha_c_atom = mol.GetAtomWithIdx(match[4])
+                if alpha_c_atom.GetIsAromatic():
+                    for ring in rings:
+                        if match[4] in ring and len(ring) <= 6:
+                            ring_key = frozenset(ring)
+                            if ring_key not in ring_to_matches:
+                                ring_to_matches[ring_key] = []
+                            ring_to_matches[ring_key].append(i)
+                            break
+
+            # If 2+ matches share an aromatic ring at their alpha-C position, skip them
+            for ring_key, match_indices in ring_to_matches.items():
+                if len(match_indices) >= 2:
+                    skip_indices.update(match_indices)
+
+            for i, match in enumerate(matches):
+                if len(match) >= 5 and i not in skip_indices:
                     c_atom = match[1]  # Carbonyl carbon
                     n_atom = match[3]  # Nitrogen
                     bonds.append((c_atom, n_atom))
@@ -453,6 +487,78 @@ class FragmentProcessor:
         self.monomer_library = monomer_library
         self.bond_detector = BondDetector()
 
+
+    def _find_staple_sidechain_bonds(self, mol, existing_bonds):
+        """
+        Find bonds to cleave in staple macrocycles.
+
+        Detects large macrocycles (>10 atoms) that contain both quaternary
+        alpha-methyl carbons (staple monomers like R8, S5) and non-peptide
+        linker bonds. Cleaves at C=C double bonds within these macrocycles,
+        which are the signature of olefin metathesis (RCMtrans/RCMcis) linkers.
+        Also cleaves at C-S thioether bonds for FC01-type linkers.
+        """
+        ring_info = mol.GetRingInfo()
+        large_rings = [set(ring) for ring in ring_info.AtomRings() if len(ring) > 10]
+        if not large_rings:
+            return []
+
+        # Quick check: must have quaternary alpha-methyl C in a large ring
+        quat_alpha = Chem.MolFromSmarts('[N;X2,X3]-[C;X4;H0](-[C;X3](=[O;X1]))-[CH3]')
+        if not quat_alpha or not mol.HasSubstructMatch(quat_alpha):
+            return []
+
+        existing_atom_pairs = set()
+        for a1, a2, _ in existing_bonds:
+            existing_atom_pairs.add((min(a1, a2), max(a1, a2)))
+
+        additional_bonds = []
+        seen = set()
+
+        for ring in large_rings:
+            for bond in mol.GetBonds():
+                a1 = bond.GetBeginAtomIdx()
+                a2 = bond.GetEndAtomIdx()
+                if a1 not in ring or a2 not in ring:
+                    continue
+
+                # For C=C double bonds (RCMtrans/RCMcis): cleave the single bonds
+                # one hop away on each side. RCMtrans structure: ...R3chain-CH2-C=C-CH2-R3chain...
+                # Cleaving at CH2-R3chain boundaries keeps the correct R3 chain length.
+                if (bond.GetBondTypeAsDouble() >= 2 and
+                        mol.GetAtomWithIdx(a1).GetAtomicNum() == 6 and
+                        mol.GetAtomWithIdx(a2).GetAtomicNum() == 6):
+                    # For each C=C atom, find its other ring neighbor and cleave that bond
+                    for cc_atom_idx in (a1, a2):
+                        other_cc = a2 if cc_atom_idx == a1 else a1
+                        cc_atom = mol.GetAtomWithIdx(cc_atom_idx)
+                        for nbr in cc_atom.GetNeighbors():
+                            nbr_idx = nbr.GetIdx()
+                            if nbr_idx == other_cc or nbr_idx not in ring:
+                                continue
+                            # nbr is the CH2 between C=C and R3 chain
+                            # Find nbr's other ring neighbor (the R3 chain atom)
+                            for nbr2 in nbr.GetNeighbors():
+                                nbr2_idx = nbr2.GetIdx()
+                                if nbr2_idx == cc_atom_idx or nbr2_idx not in ring:
+                                    continue
+                                pair = (min(nbr_idx, nbr2_idx), max(nbr_idx, nbr2_idx))
+                                if pair not in existing_atom_pairs and pair not in seen:
+                                    seen.add(pair)
+                                    additional_bonds.append((nbr_idx, nbr2_idx, LinkageType.UNKNOWN))
+
+                # Cleave C-S thioether bonds (FC01-type linker)
+                atom1 = mol.GetAtomWithIdx(a1)
+                atom2 = mol.GetAtomWithIdx(a2)
+                if ((atom1.GetAtomicNum() == 6 and atom2.GetAtomicNum() == 16) or
+                        (atom1.GetAtomicNum() == 16 and atom2.GetAtomicNum() == 6)):
+                    pair = (min(a1, a2), max(a1, a2))
+                    if pair not in existing_atom_pairs and pair not in seen:
+                        seen.add(pair)
+                        additional_bonds.append((a1, a2, LinkageType.UNKNOWN))
+
+        return additional_bonds
+
     def process_molecule(self, mol: Chem.Mol) -> FragmentGraph:
         """
         Process a molecule into a fragment graph.
@@ -469,6 +575,11 @@ class FragmentProcessor:
         
         try:
             bonds_to_cleave = self.bond_detector.find_cleavable_bonds(mol)
+
+            # Detect R3 side-chain bonds for staple monomers (R8, S5, etc.)
+            r3_bonds = self._find_staple_sidechain_bonds(mol, bonds_to_cleave)
+            if r3_bonds:
+                bonds_to_cleave.extend(r3_bonds)
 
             if not bonds_to_cleave:
                 # Single fragment (no cleavable bonds)
@@ -1091,21 +1202,14 @@ class HELMGenerator:
         is_cyclic = graph.is_cyclic()
         
         # Filter backbone: nodes that are part of R1-R2 chain are backbone
-        # Nodes connected only via R3 (side chain) are branches
+        # Nodes lacking R1 (like 'ac' acetyl cap) are branches regardless of position
         backbone_nodes = []
-        for i, node in enumerate(ordered_nodes_raw):
+        for node in ordered_nodes_raw:
             is_branch = False
-            
-            if i == 0 and len(ordered_nodes_raw) > 1 and node.monomer:
-                # Check if this first node lacks R1 (N-terminus)
-                # If it has no R1, it's a cap that should be a branch
+            if node.monomer and len(ordered_nodes_raw) > 1:
                 has_r1 = 'R1' in node.monomer.r_groups
-                
-                if not has_r1:
-                    # This is an N-terminal cap (like 'ac') at position 1
-                    # It should be a branch, not part of the main backbone
+                if not has_r1 and not node.monomer.symbol.startswith('X'):
                     is_branch = True
-            
             if not is_branch:
                 backbone_nodes.append(node)
         

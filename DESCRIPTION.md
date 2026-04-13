@@ -189,8 +189,15 @@ Peptide bond: [#6]-[C;X3;!r5;!r6](=[O;X1])-[N;X2,X3]~[#6;X3,X4]
   - Carbonyl: sp2 (X3), NOT in 5/6-membered ring (preserves lactams like Pyr)
   - Nitrogen: X2 (proline) or X3 (standard), any bond type (~) to next carbon
   - Alpha-C: sp3 (X4) or sp2 (X3, dehydro amino acids)
+  - Filter: if two matches share a small aromatic ring (≤6 atoms) at their
+    alpha-C position, both are skipped (FC01-style internal amide bonds)
 
 Disulfide bond: [C;X4]-[S;X2]-[S;X2]-[C;X4]
+
+Staple sidechain bonds (macrocycle detection):
+  - Detected in large rings (>10 atoms) containing quaternary alpha-methyl carbons
+  - C=C double bonds: cleave one bond away from C=C on each side (RCMtrans/RCMcis)
+  - C-S thioether bonds: cleave directly (FC01-type linkers)
 
 Primary amine (N-terminus): [N;H2,H3;X3,X4]-[C;X3,X4]
 ```

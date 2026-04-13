@@ -15,7 +15,7 @@ After **every code iteration**, you MUST complete these steps in order:
    test_peptides('BILN_W_HELM_2.csv', 'BILN', 'molfile(helm(BILN))', 'helm(BILN)', extra_column='BILN')
    "
    ```
-   Expected: Linear 20/20, Cyclic 41/41, BILN 1/5.
+   Expected: Linear 20/20, Cyclic 41/41, BILN 1/5, Stapled ~97.9% monomer match.
 
 2. **Update documentation** if behavior changed:
    - `README.md` - capabilities, API, test results
@@ -53,7 +53,9 @@ aggregated/          # Single-file output for Datagrok
 
 ## Architecture
 
-Pipeline: parse mol -> detect bonds (SMARTS) -> fragment -> match fragments to library (R-group combinatorics) -> recover unmatched (3-phase) -> generate HELM.
+Pipeline: parse mol -> detect bonds (SMARTS + staple macrocycle detection) -> fragment -> match fragments to library (R-group combinatorics) -> recover unmatched (3-phase) -> generate HELM.
+
+Bond detection: peptide bonds, disulfide bonds, staple sidechain bonds (C=C in macrocycles for RCMtrans/RCMcis, C-S thioether for FC01). FC01 internal amide bonds are filtered out (aromatic ring dual-amide pattern).
 
 Recovery phases: exact merge -> stereo-agnostic individual -> stereo-agnostic merge (both-unmatched pairs only).
 

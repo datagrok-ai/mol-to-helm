@@ -117,26 +117,35 @@ class FragmentGraph:
         return ordered
     
     def _traverse_from_node(self, node_id: int, visited: set, ordered: list):
-        """Helper for depth-first traversal"""
+        """Helper for depth-first traversal with bidirectional link support"""
         if node_id in visited:
             return
-        
+
         visited.add(node_id)
         ordered.append(self.nodes[node_id])
-        
-        # Get peptide bond neighbors first (to maintain chain order)
-        peptide_neighbors = []
-        other_neighbors = []
-        
+
+        # Follow links in BOTH directions but prefer the canonical (from→to)
+        # direction. Link direction depends on bond detection order and is not
+        # guaranteed to match backbone direction (e.g. FC01 stapled peptides).
+        peptide_fwd = []
+        peptide_bwd = []
+        other_fwd = []
+        other_bwd = []
+
         for link in self.links:
             if link.from_node_id == node_id and link.to_node_id not in visited:
                 if link.linkage_type == LinkageType.PEPTIDE:
-                    peptide_neighbors.append(link.to_node_id)
+                    peptide_fwd.append(link.to_node_id)
                 else:
-                    other_neighbors.append(link.to_node_id)
-        
-        # Visit peptide bonds first, then others
-        for neighbor_id in peptide_neighbors + other_neighbors:
+                    other_fwd.append(link.to_node_id)
+            elif link.to_node_id == node_id and link.from_node_id not in visited:
+                if link.linkage_type == LinkageType.PEPTIDE:
+                    peptide_bwd.append(link.from_node_id)
+                else:
+                    other_bwd.append(link.from_node_id)
+
+        # Forward first, backward as fallback
+        for neighbor_id in peptide_fwd + peptide_bwd + other_fwd + other_bwd:
             self._traverse_from_node(neighbor_id, visited, ordered)
     
     def get_fragment_sequence(self) -> List[str]:
@@ -161,21 +170,18 @@ class FragmentGraph:
         if len(ordered) < 3:
             return False
         
-        # Get the last node ID
-        last_id = ordered[-1].id
-        
-        # For a cyclic peptide, the last residue should connect back to one of the first few residues
-        # (usually first, but could be second if there's an N-terminal cap like 'ac')
-        # Check if last node has a peptide bond to any of the first 3 nodes
-        first_few_ids = [ordered[i].id for i in range(min(3, len(ordered)))]
-        
+        # Check if any of the last few residues connect back to any of the first few.
+        # Checking multiple positions on each end handles branch nodes (like 'ac')
+        # that the bidirectional traversal may place at the edges.
+        first_few_ids = set(ordered[i].id for i in range(min(3, len(ordered))))
+        last_few_ids = set(ordered[-i - 1].id for i in range(min(3, len(ordered))))
+
         for link in self.links:
             if link.linkage_type == LinkageType.PEPTIDE:
-                # Check if link connects last node to one of the first few nodes
-                if (link.from_node_id == last_id and link.to_node_id in first_few_ids) or \
-                   (link.to_node_id == last_id and link.from_node_id in first_few_ids):
+                if (link.from_node_id in last_few_ids and link.to_node_id in first_few_ids) or \
+                   (link.to_node_id in last_few_ids and link.from_node_id in first_few_ids):
                     return True
-        
+
         return False
     
     def find_all_cycles(self) -> List[List[int]]:

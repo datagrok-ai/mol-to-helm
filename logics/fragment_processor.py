@@ -55,10 +55,38 @@ class BondDetector:
         bonds = []
         try:
             matches = mol.GetSubstructMatches(self.peptide_bond)
-            for match in matches:
-                if len(match) >= 5:
-                    # Pattern: [C;X3,X4]-[C;X3](=[O;X1])-[N;X2,X3]~[C;X3,X4]
-                    # match[0]=alpha-C (sp2 or sp3), match[1]=carbonyl-C, match[2]=O, match[3]=N, match[4]=next-alpha-C (sp2 or sp3)
+
+            # Filter out internal amide bonds in CHEM linkers like FC01.
+            # FC01 pattern: C(=O)-N-ArRing-N-C(=O) — two amide bonds connect to the
+            # same aromatic ring via the alpha-C position (match[4]).
+            # Real aromatic amino acids (3Abz) only have ONE such bond per ring.
+            skip_indices = set()
+            ring_info = mol.GetRingInfo()
+            rings = ring_info.AtomRings()
+
+            # Map: ring_frozenset -> list of match indices where match[4] is aromatic on that ring
+            # Only consider small rings (5-6 atoms) — large macrocycles should not be filtered
+            ring_to_matches = {}
+            for i, match in enumerate(matches):
+                if len(match) < 5:
+                    continue
+                alpha_c_atom = mol.GetAtomWithIdx(match[4])
+                if alpha_c_atom.GetIsAromatic():
+                    for ring in rings:
+                        if match[4] in ring and len(ring) <= 6:
+                            ring_key = frozenset(ring)
+                            if ring_key not in ring_to_matches:
+                                ring_to_matches[ring_key] = []
+                            ring_to_matches[ring_key].append(i)
+                            break
+
+            # If 2+ matches share an aromatic ring at their alpha-C position, skip them
+            for ring_key, match_indices in ring_to_matches.items():
+                if len(match_indices) >= 2:
+                    skip_indices.update(match_indices)
+
+            for i, match in enumerate(matches):
+                if len(match) >= 5 and i not in skip_indices:
                     c_atom = match[1]  # Carbonyl carbon
                     n_atom = match[3]  # Nitrogen
                     bonds.append((c_atom, n_atom))
@@ -139,6 +167,78 @@ class FragmentProcessor:
         self.monomer_library = monomer_library
         self.bond_detector = BondDetector()
 
+
+    def _find_staple_sidechain_bonds(self, mol, existing_bonds):
+        """
+        Find bonds to cleave in staple macrocycles.
+
+        Detects large macrocycles (>10 atoms) that contain both quaternary
+        alpha-methyl carbons (staple monomers like R8, S5) and non-peptide
+        linker bonds. Cleaves at C=C double bonds within these macrocycles,
+        which are the signature of olefin metathesis (RCMtrans/RCMcis) linkers.
+        Also cleaves at C-S thioether bonds for FC01-type linkers.
+        """
+        ring_info = mol.GetRingInfo()
+        large_rings = [set(ring) for ring in ring_info.AtomRings() if len(ring) > 10]
+        if not large_rings:
+            return []
+
+        # Quick check: must have quaternary alpha-methyl C in a large ring
+        quat_alpha = Chem.MolFromSmarts('[N;X2,X3]-[C;X4;H0](-[C;X3](=[O;X1]))-[CH3]')
+        if not quat_alpha or not mol.HasSubstructMatch(quat_alpha):
+            return []
+
+        existing_atom_pairs = set()
+        for a1, a2, _ in existing_bonds:
+            existing_atom_pairs.add((min(a1, a2), max(a1, a2)))
+
+        additional_bonds = []
+        seen = set()
+
+        for ring in large_rings:
+            for bond in mol.GetBonds():
+                a1 = bond.GetBeginAtomIdx()
+                a2 = bond.GetEndAtomIdx()
+                if a1 not in ring or a2 not in ring:
+                    continue
+
+                # For C=C double bonds (RCMtrans/RCMcis): cleave the single bonds
+                # one hop away on each side. RCMtrans structure: ...R3chain-CH2-C=C-CH2-R3chain...
+                # Cleaving at CH2-R3chain boundaries keeps the correct R3 chain length.
+                if (bond.GetBondTypeAsDouble() >= 2 and
+                        mol.GetAtomWithIdx(a1).GetAtomicNum() == 6 and
+                        mol.GetAtomWithIdx(a2).GetAtomicNum() == 6):
+                    # For each C=C atom, find its other ring neighbor and cleave that bond
+                    for cc_atom_idx in (a1, a2):
+                        other_cc = a2 if cc_atom_idx == a1 else a1
+                        cc_atom = mol.GetAtomWithIdx(cc_atom_idx)
+                        for nbr in cc_atom.GetNeighbors():
+                            nbr_idx = nbr.GetIdx()
+                            if nbr_idx == other_cc or nbr_idx not in ring:
+                                continue
+                            # nbr is the CH2 between C=C and R3 chain
+                            # Find nbr's other ring neighbor (the R3 chain atom)
+                            for nbr2 in nbr.GetNeighbors():
+                                nbr2_idx = nbr2.GetIdx()
+                                if nbr2_idx == cc_atom_idx or nbr2_idx not in ring:
+                                    continue
+                                pair = (min(nbr_idx, nbr2_idx), max(nbr_idx, nbr2_idx))
+                                if pair not in existing_atom_pairs and pair not in seen:
+                                    seen.add(pair)
+                                    additional_bonds.append((nbr_idx, nbr2_idx, LinkageType.UNKNOWN))
+
+                # Cleave C-S thioether bonds (FC01-type linker)
+                atom1 = mol.GetAtomWithIdx(a1)
+                atom2 = mol.GetAtomWithIdx(a2)
+                if ((atom1.GetAtomicNum() == 6 and atom2.GetAtomicNum() == 16) or
+                        (atom1.GetAtomicNum() == 16 and atom2.GetAtomicNum() == 6)):
+                    pair = (min(a1, a2), max(a1, a2))
+                    if pair not in existing_atom_pairs and pair not in seen:
+                        seen.add(pair)
+                        additional_bonds.append((a1, a2, LinkageType.UNKNOWN))
+
+        return additional_bonds
+
     def process_molecule(self, mol: Chem.Mol) -> FragmentGraph:
         """
         Process a molecule into a fragment graph.
@@ -155,6 +255,11 @@ class FragmentProcessor:
         
         try:
             bonds_to_cleave = self.bond_detector.find_cleavable_bonds(mol)
+
+            # Detect R3 side-chain bonds for staple monomers (R8, S5, etc.)
+            r3_bonds = self._find_staple_sidechain_bonds(mol, bonds_to_cleave)
+            if r3_bonds:
+                bonds_to_cleave.extend(r3_bonds)
 
             if not bonds_to_cleave:
                 # Single fragment (no cleavable bonds)

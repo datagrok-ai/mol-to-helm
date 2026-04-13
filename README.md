@@ -5,9 +5,10 @@ Converts peptide molecule structures (RDKit molecules) to HELM (Hierarchical Edi
 - Linear peptides (100% accuracy on test set)
 - Cyclic peptides with head-to-tail connections (100% accuracy on test set)
 - Disulfide bridges (S-S bonds between Cys residues)
+- Stapled peptides (RCMtrans/RCMcis olefin metathesis, FC01 thioether linkers)
 - Branch/side-chain modifications (acetyl caps, etc.)
 - Multi-chain structures (BILN peptides - partial support)
-- Modified and non-standard amino acids (322 PEPTIDE monomers from HELM Core Library)
+- Modified and non-standard amino acids (1,919 PEPTIDE monomers from HELMCore+Other Library)
 - Accepts both molfile and SMILES input (auto-detection)
 - Custom monomer library support (pass JSON at runtime)
 
@@ -100,7 +101,7 @@ for success, helm in results:
 ```
 Input (molfile/SMILES)
   -> Parse molecule (RDKit)
-  -> Detect cleavable bonds (peptide + disulfide SMARTS)
+  -> Detect cleavable bonds (peptide + disulfide + staple sidechain)
   -> Fragment molecule at bonds
   -> Build FragmentGraph (nodes + links)
   -> Match each fragment to library monomer (R-group combinatorics)
@@ -117,6 +118,7 @@ Output: HELM string
 | Linear Peptides | 20/20 (100%) |
 | Cyclic Peptides | 41/41 (100%) |
 | BILN Peptides | 1/5 (20%) |
+| Stapled Peptides | 3678/3756 monomers matched (97.9%) |
 
 ## Performance
 

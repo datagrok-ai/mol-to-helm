@@ -282,24 +282,88 @@ def test_peptides(filename, test_name, molfile_column, helm_column, extra_column
         print("All tests passed!")
     print("=" * 60)
 
+def test_stapled_peptides(filename='stapled_helm.csv', library_path=None):
+    """
+    Test stapled peptide conversion with monomer-level matching.
+
+    Stapled peptides have CHEM elements (Ac, NH2, FC01, RCMtrans, etc.) that
+    are expected to come out as unknown X fragments. The test measures how many
+    PEPTIDE monomers are correctly matched vs unknown.
+
+    Args:
+        filename: CSV file with original_helm, molfile, smiles columns
+        library_path: Path to monomer library JSON (defaults to HELMCoreAndOther.json)
+    """
+    print(f"\n=== TESTING STAPLED PEPTIDES ===")
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    table_path = os.path.join(project_root, 'test-sets', filename)
+
+    if not os.path.exists(table_path):
+        print("File not found")
+        return
+
+    table = pd.read_csv(table_path)
+
+    if library_path is None:
+        library_path = os.path.join(project_root, 'libraries', 'HELMCoreAndOther.json')
+
+    library_json = None
+    if os.path.exists(library_path):
+        with open(library_path, 'r', encoding='utf-8') as f:
+            library_json = f.read()
+
+    smiles_list = table['smiles'].tolist()
+    helms = table['original_helm'].tolist()
+
+    chem_symbols = {'Ac', 'NH2', 'FC01', 'RCMtrans', 'RCMcis', 'VHL185'}
+
+    print(f"Converting {len(smiles_list)} molecules...")
+    start_time = time.time()
+    results = convert_molecules_batch(smiles_list, library_json=library_json, input_type='smiles')
+    elapsed = time.time() - start_time
+
+    total_expected = 0
+    total_matched = 0
+    total_unknown = 0
+
+    for i, (success, got_helm) in enumerate(results):
+        expected_monomers = []
+        for p in re.findall(r'PEPTIDE\d+\{([^}]+)\}', helms[i]):
+            expected_monomers.extend(_parse_sequence(p))
+
+        got_monomers = []
+        if success:
+            for p in re.findall(r'PEPTIDE\d+\{([^}]+)\}', got_helm):
+                got_monomers.extend(_parse_sequence(p))
+
+        expected_peptide_only = [m for m in expected_monomers if m not in chem_symbols]
+        total_expected += len(expected_peptide_only)
+        total_matched += sum(1 for m in got_monomers if not m.startswith('X'))
+        total_unknown += sum(1 for m in got_monomers if m.startswith('X'))
+
+    match_pct = 100 * total_matched / total_expected if total_expected > 0 else 0
+
+    print("\n" + "=" * 60)
+    print("STAPLED PEPTIDES SUMMARY:")
+    print(f"Molecules: {len(results)}")
+    print(f"Matched monomers: {total_matched}/{total_expected} ({match_pct:.1f}%)")
+    print(f"Unknown monomers: {total_unknown}")
+    print(f"Time consumed: {elapsed:.2f} seconds ({elapsed/len(results):.3f} sec/molecule)")
+    print("=" * 60)
+
+
 if __name__ == "__main__":
 
-    # # Test problems
-    # test_peptides(
-    #     filename='PROBLEMS.csv',
-    #     test_name='problems',
-    #     molfile_column='molfile(sequence)',
-    #     helm_column='sequence'
-    # )
+    # Test linear peptides
+    test_peptides(
+        filename='HELM_LINEAR.csv',
+        test_name='Linear Peptides',
+        molfile_column='molfile(HELM)',
+        helm_column='HELM'
+    )
 
-    # # Test linear peptides
-    # test_peptides(
-    #     filename='HELM_LINEAR.csv',
-    #     test_name='Linear Peptides',
-    #     molfile_column='molfile(HELM)',
-    #     helm_column='HELM'
-    # )
-    
     # Test cyclic peptides
     test_peptides(
         filename='HELM_cyclic.csv',
@@ -307,12 +371,15 @@ if __name__ == "__main__":
         molfile_column='molfile(sequence)',
         helm_column='sequence'
     )
-    
-    # # Test BILN peptides
-    # test_peptides(
-    #     filename='BILN_W_HELM_2.csv',
-    #     test_name='BILN Peptides',
-    #     molfile_column='molfile(helm(BILN))',
-    #     helm_column='helm(BILN)',
-    #     extra_column='BILN'
-    # )
+
+    # Test BILN peptides
+    test_peptides(
+        filename='BILN_W_HELM_2.csv',
+        test_name='BILN Peptides',
+        molfile_column='molfile(helm(BILN))',
+        helm_column='helm(BILN)',
+        extra_column='BILN'
+    )
+
+    # Test stapled peptides
+    test_stapled_peptides()

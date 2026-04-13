@@ -72,21 +72,14 @@ class HELMGenerator:
         is_cyclic = graph.is_cyclic()
         
         # Filter backbone: nodes that are part of R1-R2 chain are backbone
-        # Nodes connected only via R3 (side chain) are branches
+        # Nodes lacking R1 (like 'ac' acetyl cap) are branches regardless of position
         backbone_nodes = []
-        for i, node in enumerate(ordered_nodes_raw):
+        for node in ordered_nodes_raw:
             is_branch = False
-            
-            if i == 0 and len(ordered_nodes_raw) > 1 and node.monomer:
-                # Check if this first node lacks R1 (N-terminus)
-                # If it has no R1, it's a cap that should be a branch
+            if node.monomer and len(ordered_nodes_raw) > 1:
                 has_r1 = 'R1' in node.monomer.r_groups
-                
-                if not has_r1:
-                    # This is an N-terminal cap (like 'ac') at position 1
-                    # It should be a branch, not part of the main backbone
+                if not has_r1 and not node.monomer.symbol.startswith('X'):
                     is_branch = True
-            
             if not is_branch:
                 backbone_nodes.append(node)
         
