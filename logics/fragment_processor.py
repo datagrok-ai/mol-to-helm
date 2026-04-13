@@ -306,6 +306,7 @@ class FragmentProcessor:
             graph.cleaved_bond_indices = bond_indices
             graph.bond_info = bond_info
             graph.atom_mappings = atom_mappings
+            graph.uncleaned_fragments = fragments  # Keep fragments with dummy atoms for R-group SMILES
 
             # Create nodes for each fragment
             fragment_nodes = []
@@ -593,7 +594,7 @@ class FragmentProcessor:
         # Identify unmatched nodes
         unmatched_nodes = []
         for node_id, node in graph.nodes.items():
-            if node.monomer and node.monomer.symbol.startswith("X"):
+            if node.monomer and node.monomer.is_unknown:
                 unmatched_nodes.append(node_id)
         
         if not unmatched_nodes:
@@ -688,8 +689,7 @@ class FragmentProcessor:
         # Find all unmatched nodes (nodes with mock/unknown monomers)
         unmatched_nodes = []
         for node_id, node in graph.nodes.items():
-            if node.monomer and (node.monomer.symbol.startswith('X') or 
-                                 node.monomer.name.startswith('Unknown')):
+            if node.monomer and node.monomer.is_unknown:
                 unmatched_nodes.append(node_id)
         
         if not unmatched_nodes:
@@ -741,8 +741,7 @@ class FragmentProcessor:
         """
         def _is_unmatched(node):
             return (node.monomer and
-                    (node.monomer.symbol.startswith('X') or
-                     node.monomer.name.startswith('Unknown')))
+                    node.monomer.is_unknown)
 
         unmatched_ids = [nid for nid, node in graph.nodes.items() if _is_unmatched(node)]
         if not unmatched_ids:

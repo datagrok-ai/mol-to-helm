@@ -626,6 +626,7 @@ class FragmentProcessor:
             graph.cleaved_bond_indices = bond_indices
             graph.bond_info = bond_info
             graph.atom_mappings = atom_mappings
+            graph.uncleaned_fragments = fragments  # Keep fragments with dummy atoms for R-group SMILES
 
             # Create nodes for each fragment
             fragment_nodes = []
@@ -913,7 +914,7 @@ class FragmentProcessor:
         # Identify unmatched nodes
         unmatched_nodes = []
         for node_id, node in graph.nodes.items():
-            if node.monomer and node.monomer.symbol.startswith("X"):
+            if node.monomer and node.monomer.is_unknown:
                 unmatched_nodes.append(node_id)
         
         if not unmatched_nodes:
@@ -1008,8 +1009,7 @@ class FragmentProcessor:
         # Find all unmatched nodes (nodes with mock/unknown monomers)
         unmatched_nodes = []
         for node_id, node in graph.nodes.items():
-            if node.monomer and (node.monomer.symbol.startswith('X') or 
-                                 node.monomer.name.startswith('Unknown')):
+            if node.monomer and node.monomer.is_unknown:
                 unmatched_nodes.append(node_id)
         
         if not unmatched_nodes:
@@ -1061,8 +1061,7 @@ class FragmentProcessor:
         """
         def _is_unmatched(node):
             return (node.monomer and
-                    (node.monomer.symbol.startswith('X') or
-                     node.monomer.name.startswith('Unknown')))
+                    node.monomer.is_unknown)
 
         unmatched_ids = [nid for nid, node in graph.nodes.items() if _is_unmatched(node)]
         if not unmatched_ids:
@@ -1208,7 +1207,7 @@ class HELMGenerator:
             is_branch = False
             if node.monomer and len(ordered_nodes_raw) > 1:
                 has_r1 = 'R1' in node.monomer.r_groups
-                if not has_r1 and not node.monomer.symbol.startswith('X'):
+                if not has_r1 and not node.monomer.is_unknown:
                     is_branch = True
             if not is_branch:
                 backbone_nodes.append(node)
@@ -1221,14 +1220,10 @@ class HELMGenerator:
         branch_nodes = [(node_id, node) for node_id, node in graph.nodes.items() 
                        if node_id not in ordered_node_ids]
         
-        # Generate sequence notation
-        if is_cyclic:
-            # Cyclic: wrap multi-letter monomers in brackets, single-letter ones stay as-is
-            formatted_symbols = [f"[{symbol}]" if len(symbol) > 1 else symbol for symbol in sequence_symbols]
-            sequence = ".".join(formatted_symbols)
-        else:
-            # Linear: no brackets
-            sequence = ".".join(sequence_symbols)
+        # Generate sequence notation — always bracket multi-char symbols (HELM spec requirement,
+        # also needed for inline SMILES like [*:1]NC(CC(=O)O)C(=O)[*:2])
+        formatted_symbols = [f"[{symbol}]" if len(symbol) > 1 else symbol for symbol in sequence_symbols]
+        sequence = ".".join(formatted_symbols)
         
         # Collect non-sequential connections (disulfide bridges, cyclic bonds, etc.)
         connections = []
@@ -1512,6 +1507,7 @@ class MonomerData:
         self.r_groups = {}  # R-group label -> cap SMILES
         self.r_group_count = 0
         self.capped_smiles_cache = {}  # Cache: frozenset of removed R-groups -> canonical SMILES
+        self.is_unknown = False  # True for unmatched fragments with inline SMILES
 
     def __repr__(self):
         return f"Monomer({self.symbol}: {self.name}, R-groups: {self.r_group_count})"
@@ -1887,6 +1883,34 @@ from rdkit import Chem
 import os
 import json
 
+def _generate_rgroup_smiles(graph, node_id):
+    """
+    Generate SMILES with R-group markers ([*:1], [*:2], ...) for an unmatched fragment.
+    Uses the uncleaned fragment (with dummy atoms from FragmentOnBonds) stored in the graph.
+    Falls back to plain SMILES from the cleaned mol if uncleaned data isn't available.
+    """
+    # Try to use uncleaned fragment with dummy atoms
+    if hasattr(graph, 'uncleaned_fragments') and node_id < len(graph.uncleaned_fragments):
+        uncleaned = graph.uncleaned_fragments[node_id]
+        try:
+            mol = Chem.RWMol(Chem.Mol(uncleaned))
+            r_num = 1
+            for atom in mol.GetAtoms():
+                if atom.GetAtomicNum() == 0:
+                    atom.SetIsotope(0)
+                    atom.SetAtomMapNum(r_num)
+                    r_num += 1
+            return Chem.MolToSmiles(mol)
+        except Exception:
+            pass
+
+    # Fallback: plain SMILES from cleaned mol (no R-groups)
+    node = graph.nodes.get(node_id)
+    if node and node.mol:
+        return Chem.MolToSmiles(node.mol, canonical=True)
+    return "?"
+
+
 # Global variables for caching
 _MONOMER_LIBRARY = None
 _PROCESSOR = None
@@ -2068,21 +2092,23 @@ def convert_molecules_batch(molecules: list, library_json: str = None, input_typ
             graph = processor.process_molecule(mol)
             
             # Match each fragment to a monomer using graph topology
-            unknown_count = 0
             for node_id, node in graph.nodes.items():
                 # Count connections for this node
                 neighbors = graph.get_neighbors(node_id)
                 num_connections = len(neighbors)
-                
+
                 # Find matching monomer
                 monomer = matcher.find_exact_match(node.mol, num_connections)
                 if monomer:
                     node.monomer = monomer
                 else:
-                    unknown_count += 1
+                    # Generate inline SMILES with R-group markers for unmatched fragments
                     mock_monomer = MonomerData()
-                    mock_monomer.symbol = f"X{unknown_count}"
-                    mock_monomer.name = f"Unknown_{unknown_count}"
+                    mock_monomer.is_unknown = True
+                    mock_monomer.symbol = _generate_rgroup_smiles(graph, node_id)
+                    mock_monomer.name = "Unknown"
+                    mock_monomer.r_groups = {f'R{j+1}': '' for j in range(num_connections)}
+                    mock_monomer.r_group_count = num_connections
                     node.monomer = mock_monomer
             
             # Try to recover unmatched fragments by merging with neighbors

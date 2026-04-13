@@ -340,16 +340,19 @@ def test_stapled_peptides(filename='stapled_helm.csv', library_path=None):
 
         expected_peptide_only = [m for m in expected_monomers if m not in chem_symbols]
         total_expected += len(expected_peptide_only)
-        total_matched += sum(1 for m in got_monomers if not m.startswith('X'))
-        total_unknown += sum(1 for m in got_monomers if m.startswith('X'))
+        for m in got_monomers:
+            if '*:' in m or '*]' in m:
+                total_unknown += 1  # Inline SMILES (unmatched, but with R-group info)
+            else:
+                total_matched += 1  # Library monomer match
 
     match_pct = 100 * total_matched / total_expected if total_expected > 0 else 0
 
     print("\n" + "=" * 60)
     print("STAPLED PEPTIDES SUMMARY:")
     print(f"Molecules: {len(results)}")
-    print(f"Matched monomers: {total_matched}/{total_expected} ({match_pct:.1f}%)")
-    print(f"Unknown monomers: {total_unknown}")
+    print(f"Library-matched monomers: {total_matched}/{total_expected} ({match_pct:.1f}%)")
+    print(f"Inline SMILES monomers: {total_unknown} (unmatched fragments with R-group SMILES)")
     print(f"Time consumed: {elapsed:.2f} seconds ({elapsed/len(results):.3f} sec/molecule)")
     print("=" * 60)
 

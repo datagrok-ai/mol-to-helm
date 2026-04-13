@@ -52,6 +52,7 @@ class MonomerData:
         self.r_groups = {}  # R-group label -> cap SMILES
         self.r_group_count = 0
         self.capped_smiles_cache = {}  # Cache: frozenset of removed R-groups -> canonical SMILES
+        self.is_unknown = False  # True for unmatched fragments with inline SMILES
 
     def __repr__(self):
         return f"Monomer({self.symbol}: {self.name}, R-groups: {self.r_group_count})"

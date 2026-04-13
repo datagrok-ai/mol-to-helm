@@ -78,7 +78,7 @@ class HELMGenerator:
             is_branch = False
             if node.monomer and len(ordered_nodes_raw) > 1:
                 has_r1 = 'R1' in node.monomer.r_groups
-                if not has_r1 and not node.monomer.symbol.startswith('X'):
+                if not has_r1 and not node.monomer.is_unknown:
                     is_branch = True
             if not is_branch:
                 backbone_nodes.append(node)
@@ -91,14 +91,10 @@ class HELMGenerator:
         branch_nodes = [(node_id, node) for node_id, node in graph.nodes.items() 
                        if node_id not in ordered_node_ids]
         
-        # Generate sequence notation
-        if is_cyclic:
-            # Cyclic: wrap multi-letter monomers in brackets, single-letter ones stay as-is
-            formatted_symbols = [f"[{symbol}]" if len(symbol) > 1 else symbol for symbol in sequence_symbols]
-            sequence = ".".join(formatted_symbols)
-        else:
-            # Linear: no brackets
-            sequence = ".".join(sequence_symbols)
+        # Generate sequence notation — always bracket multi-char symbols (HELM spec requirement,
+        # also needed for inline SMILES like [*:1]NC(CC(=O)O)C(=O)[*:2])
+        formatted_symbols = [f"[{symbol}]" if len(symbol) > 1 else symbol for symbol in sequence_symbols]
+        sequence = ".".join(formatted_symbols)
         
         # Collect non-sequential connections (disulfide bridges, cyclic bonds, etc.)
         connections = []
