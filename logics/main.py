@@ -1,50 +1,196 @@
 import pandas as pd
 import os
 import time
+import re
 from pipeline import convert_molecules_batch
+
+
+def _parse_helm_parts(helm_str):
+    """
+    Parse HELM string into its constituent parts.
+    HELM format: chains$connections$groups$annotations$version
+
+    Returns:
+        tuple: (chains_str, connections_list, groups_str, annotations_str, version_str)
+    """
+    if not helm_str:
+        return "", [], "", "", ""
+
+    parts = helm_str.split('$')
+    chains_str = parts[0] if len(parts) > 0 else ""
+    connections_str = parts[1] if len(parts) > 1 else ""
+    groups_str = parts[2] if len(parts) > 2 else ""
+    annotations_str = parts[3] if len(parts) > 3 else ""
+    version_str = parts[4] if len(parts) > 4 else ""
+
+    connections_list = [c for c in connections_str.split('|') if c] if connections_str else []
+
+    return chains_str, connections_list, groups_str, annotations_str, version_str
+
+
+def _parse_sequence(seq_str):
+    """
+    Parse a HELM sequence string into a list of monomer symbols.
+    Handles both bracketed ([Nva]) and single-letter (A) monomers.
+
+    Example: "[dI].[Trp_Ome].A.K" -> ["dI", "Trp_Ome", "A", "K"]
+    """
+    if not seq_str:
+        return []
+
+    monomers = []
+    i = 0
+    current = ""
+    while i < len(seq_str):
+        if seq_str[i] == '[':
+            # Bracketed monomer
+            end = seq_str.index(']', i)
+            monomers.append(seq_str[i+1:end])
+            i = end + 1
+            if i < len(seq_str) and seq_str[i] == '.':
+                i += 1  # skip dot separator
+        elif seq_str[i] == '.':
+            if current:
+                monomers.append(current)
+                current = ""
+            i += 1
+        else:
+            current += seq_str[i]
+            i += 1
+    if current:
+        monomers.append(current)
+
+    return monomers
+
+
+def _normalize_sequence(seq_str):
+    """
+    Normalize a sequence by ensuring all multi-char monomers are bracketed.
+
+    Example: "ac.K.A" -> "[ac].K.A"
+    """
+    monomers = _parse_sequence(seq_str)
+    formatted = []
+    for m in monomers:
+        if len(m) > 1:
+            formatted.append(f"[{m}]")
+        else:
+            formatted.append(m)
+    return ".".join(formatted)
+
+
+def _normalize_chain(chain_str):
+    """
+    Normalize a single chain string like 'PEPTIDE1{seq}'.
+    Returns (chain_name, normalized_sequence_str, monomer_list).
+    """
+    match = re.match(r'(\w+)\{(.+)\}', chain_str)
+    if not match:
+        return chain_str, "", []
+
+    name = match.group(1)
+    seq = match.group(2)
+    monomers = _parse_sequence(seq)
+    norm_seq = _normalize_sequence(seq)
+
+    return name, norm_seq, monomers
+
+
+def _normalize_connection(conn_str):
+    """
+    Normalize a single connection string to canonical form.
+    e.g., "PEPTIDE1,PEPTIDE1,10:R3-5:R3" -> sorted endpoints.
+    """
+    # Parse: CHAIN1,CHAIN2,pos1:R#-pos2:R#
+    match = re.match(r'(\w+),(\w+),(\d+:\w+)-(\d+:\w+)', conn_str)
+    if not match:
+        return conn_str
+
+    chain1, chain2, end1, end2 = match.group(1), match.group(2), match.group(3), match.group(4)
+
+    # Normalize direction: sort the two endpoints for consistent ordering
+    # Use (chain, endpoint) tuples for sorting
+    ep1 = (chain1, end1)
+    ep2 = (chain2, end2)
+
+    if ep1 > ep2:
+        ep1, ep2 = ep2, ep1
+
+    return f"{ep1[0]},{ep2[0]},{ep1[1]}-{ep2[1]}"
 
 
 def normalize_helm_for_comparison(helm_str):
     """
-    Normalize HELM string for comparison by handling known library duplicates.
-    
-    Known issues in HELMCoreLibrary.json:
-    - Bmt and Bmt_E have identical SMILES (both lack proper E/Z stereochemistry)
-    - Lys_Ac is chemically equivalent to ac.K (acetyl cap + lysine)
-      When Lys_Ac splits into ac.K, it affects cyclic notation (residue count and positions)
-    
+    Normalize HELM string for robust comparison.
+
+    Handles:
+    - Known library duplicates (Bmt/Bmt_E, Lys_Ac/ac+K)
+    - Bracket normalization (ac -> [ac] for multi-char monomers)
+    - Connection ordering (sort connections for order-independent comparison)
+    - Connection direction normalization (canonical endpoint ordering)
+
     Args:
         helm_str: HELM notation string
-    
+
     Returns:
         Normalized HELM string
     """
     if not helm_str:
         return helm_str
-    
+
+    # --- Step 1: Known library duplicate normalizations ---
+    normalized = helm_str
+
     # Treat Bmt_E as Bmt since they're identical in the library
-    normalized = helm_str.replace('[Bmt_E]', '[Bmt]')
+    normalized = normalized.replace('[Bmt_E]', '[Bmt]')
     normalized = normalized.replace('.Bmt_E.', '.Bmt.')
-    
+
     # Lys_Ac (acetylated lysine) = ac (acetyl cap) + K (lysine)
     # When at position 1 in cyclic peptides, this affects both:
     # 1. The sequence: [Lys_Ac] → [ac].K
     # 2. The cyclic connection: N:R2-1:R1 → (N+1):R2-2:R1
-    import re
-    
-    # Pattern 1: [Lys_Ac] at start with cyclic notation
-    # e.g., {[Lys_Ac]...}$PEPTIDE1,PEPTIDE1,16:R2-1:R1$ → {[ac].K...}$PEPTIDE1,PEPTIDE1,17:R2-2:R1$
     pattern1 = r'(\{)(\[Lys_Ac\])(\.[^\}]+\})(\$PEPTIDE1,PEPTIDE1,)(\d+)(:R2-1:R1)'
     def replace1(match):
         n = int(match.group(5))
         return f"{match.group(1)}[ac].K{match.group(3)}{match.group(4)}{n+1}:R2-2:R1"
     normalized = re.sub(pattern1, replace1, normalized)
-    
-    # Pattern 2: General [Lys_Ac] → ac.K (for non-position-1 cases or linear)
-    normalized = normalized.replace('[Lys_Ac]', 'ac.K')
-    normalized = normalized.replace('.Lys_Ac.', '.ac.K.')
-    
-    return normalized
+
+    # General [Lys_Ac] → [ac].K
+    normalized = normalized.replace('[Lys_Ac]', '[ac].K')
+    normalized = normalized.replace('.Lys_Ac.', '.[ac].K.')
+
+    # xi-prefix monomers have unspecified stereochemistry at one center.
+    # They can match either resolved form. Normalize to the L-form equivalent.
+    # xiThr (unspecified at Cb) -> T (L-Thr), aThr (L-allo-Thr) -> T
+    # xiIle (unspecified at Cb) -> I (L-Ile), aIle (L-allo-Ile) -> I
+    for xi_sym, allo_sym, std_sym in [('xiThr', 'aThr', 'T'), ('xiIle', 'aIle', 'I')]:
+        normalized = normalized.replace(f'[{xi_sym}]', std_sym)
+        normalized = normalized.replace(f'.{xi_sym}.', f'.{std_sym}.')
+        normalized = normalized.replace(f'[{allo_sym}]', std_sym)
+        normalized = normalized.replace(f'.{allo_sym}.', f'.{std_sym}.')
+
+    # --- Step 2: Parse into parts ---
+    chains_str, connections, groups_str, annotations_str, version_str = _parse_helm_parts(normalized)
+
+    # --- Step 3: Normalize chains (bracket normalization) ---
+    chain_strs = []
+    if chains_str:
+        # Split chains on | but respect {} braces
+        raw_chains = re.findall(r'\w+\{[^}]+\}', chains_str)
+        for chain in raw_chains:
+            name, norm_seq, _ = _normalize_chain(chain)
+            chain_strs.append(f"{name}{{{norm_seq}}}")
+
+    normalized_chains = "|".join(chain_strs) if chain_strs else chains_str
+
+    # --- Step 4: Normalize and sort connections ---
+    normalized_connections = sorted([_normalize_connection(c) for c in connections])
+    connections_str = "|".join(normalized_connections)
+
+    # --- Step 5: Reassemble ---
+    result = f"{normalized_chains}${connections_str}${groups_str}${annotations_str}${version_str}"
+
+    return result
 
 
 def test_peptides(filename, test_name, molfile_column, helm_column, extra_column=None, library_path=None):

@@ -545,7 +545,7 @@ class FragmentProcessor:
                 
                 # Try to match the combined fragment (exact match only)
                 monomer = matcher.find_exact_match(combined_mol, num_connections)
-                
+
                 if monomer:
                     # Success! Create new merged node
                     new_node_id = min(nodes_to_merge)
@@ -620,4 +620,85 @@ class FragmentProcessor:
                 print(f"DEBUG: No stereo-agnostic match for node {node_id}")
         
         return matched_count
+
+    def recover_unmatched_by_merging_stereo_agnostic(self, graph: FragmentGraph, matcher) -> bool:
+        """
+        Final recovery pass: merge pairs of BOTH-unmatched neighbor fragments and
+        try stereo-agnostic matching on the combined result.
+
+        This handles monomers like Phe_4Sdihydroorotamido that have internal amide
+        bonds which get incorrectly cleaved, producing two unmatched fragments.
+
+        Only merges when BOTH fragments in a pair are unmatched — never touches
+        already-matched nodes to avoid regressions.
+
+        Returns True if any merges were successful.
+        """
+        def _is_unmatched(node):
+            return (node.monomer and
+                    (node.monomer.symbol.startswith('X') or
+                     node.monomer.name.startswith('Unknown')))
+
+        unmatched_ids = [nid for nid, node in graph.nodes.items() if _is_unmatched(node)]
+        if not unmatched_ids:
+            return False
+
+        had_changes = False
+
+        for node_id in unmatched_ids:
+            if node_id not in graph.nodes:
+                continue
+            if not _is_unmatched(graph.nodes[node_id]):
+                continue
+
+            neighbors = graph.get_neighbors(node_id)
+            for neighbor_id, linkage_type in neighbors:
+                if neighbor_id not in graph.nodes:
+                    continue
+                # Only merge with another unmatched neighbor
+                if not _is_unmatched(graph.nodes[neighbor_id]):
+                    continue
+
+                nodes_to_merge = sorted([node_id, neighbor_id])
+
+                # Find internal links between the merge candidates
+                links_to_exclude = []
+                for link in graph.links:
+                    if (link.from_node_id in nodes_to_merge and
+                            link.to_node_id in nodes_to_merge):
+                        links_to_exclude.append(link)
+
+                combined_mol = self._reconstruct_fragment_with_links(
+                    nodes_to_merge, graph, links_to_exclude)
+                if not combined_mol:
+                    continue
+
+                # Count external connections for merged fragment
+                all_neighbors = set()
+                for nid in nodes_to_merge:
+                    if nid in graph.nodes:
+                        for nbr_id, _ in graph.get_neighbors(nid):
+                            if nbr_id not in nodes_to_merge:
+                                all_neighbors.add(nbr_id)
+                num_connections = len(all_neighbors)
+
+                # Try exact match first, then stereo-agnostic
+                monomer = matcher.find_exact_match(combined_mol, num_connections)
+                if not monomer:
+                    combined_smiles = Chem.MolToSmiles(combined_mol, canonical=True)
+                    monomer = matcher.monomer_library.find_monomer_by_fragment_smiles_no_stereo(
+                        combined_smiles, num_connections)
+
+                if monomer:
+                    new_node_id = min(nodes_to_merge)
+                    new_node = FragmentNode(new_node_id, combined_mol)
+                    new_node.monomer = monomer
+                    self._merge_nodes_in_graph(graph, nodes_to_merge, new_node)
+                    had_changes = True
+                    break  # Restart from outer loop
+
+            if had_changes:
+                break
+
+        return had_changes
 

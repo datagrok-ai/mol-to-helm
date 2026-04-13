@@ -186,7 +186,7 @@ def aggregate_files(logics_dir: str, output_file: str):
     aggregated_content.append('#description: Converts molecules to HELM notation based on monomer library')
     aggregated_content.append('#input: dataframe moleculesDataframe')
     aggregated_content.append('#input: column moleculesColumn {semType: Molecule}')
-    aggregated_content.append('#input: string libraryJSON')
+    aggregated_content.append('#input: file libraryFile')
     aggregated_content.append('#output: dataframe result_helm {action:join(moleculesDataframe)} [Sequences, in HELM format]')
     aggregated_content.append('molListToProcess = moleculesDataframe[moleculesColumn].tolist()')
     aggregated_content.append('import pandas as pd')
@@ -231,6 +231,11 @@ def aggregate_files(logics_dir: str, output_file: str):
             aggregated_content.append('')
     
     
+    # read library JSON from file input
+    aggregated_content.append('global libraryJSON')
+    aggregated_content.append('with open(libraryFile) as f:')
+    aggregated_content.append('    libraryJSON = f.read()')
+    aggregated_content.append('')
     # add datagrok func call result_helm
     aggregated_content.append('res_helm_list = convert_molecules_batch(molListToProcess, library_json=libraryJSON)')
     # create dataframe result_helm

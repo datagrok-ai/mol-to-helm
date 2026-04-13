@@ -13,23 +13,34 @@ def remove_stereochemistry_from_smiles(smiles: str) -> str:
     """
     Remove stereochemistry markers from SMILES string.
     Converts [C@@H], [C@H] to C, etc.
-    
+
     This is used for matching when input molecules don't have stereochemistry defined.
+    Only strips brackets from SMILES organic subset atoms (B,C,N,O,P,S,F,Cl,Br,I).
+    Atoms like Se, Te, etc. must keep their brackets to remain valid SMILES.
     """
     if not smiles:
         return smiles
-    
+
+    # SMILES organic subset: atoms that can appear without brackets
+    organic_subset = {'B', 'C', 'N', 'O', 'P', 'S', 'F', 'Cl', 'Br', 'I'}
+
     # Remove @ symbols (stereochemistry markers)
-    # Pattern: [@]+ inside brackets
     smiles_no_stereo = re.sub(r'(@+)', '', smiles)
-    
-    # Also remove H when it's explicit in brackets like [C@@H] -> [C] -> C
-    # But we need to be careful not to remove H from [H] or CH3
-    # After removing @, we might have [CH] which should become C
-    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)H\]', r'\1', smiles_no_stereo)
-    # Handle [C] -> C (single atoms in brackets with no other info)
-    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)\]', r'\1', smiles_no_stereo)
-    
+
+    # Remove explicit H and brackets only for organic subset atoms
+    # [C@@H] -> [CH] -> C, but [SeH] must stay as [SeH]
+    def _simplify_bracket(match):
+        atom = match.group(1)  # e.g. 'C', 'Se', 'N'
+        has_h = match.group(2)  # 'H' or ''
+        if atom in organic_subset:
+            return atom  # Strip brackets (and H) for organic subset
+        elif has_h:
+            return f'[{atom}H]'  # Keep brackets and H for non-organic atoms
+        else:
+            return f'[{atom}]'  # Keep brackets for non-organic atoms
+
+    smiles_no_stereo = re.sub(r'\[([A-Z][a-z]?)(H?)\]', _simplify_bracket, smiles_no_stereo)
+
     return smiles_no_stereo
 
 class MonomerData:
@@ -153,12 +164,28 @@ class MonomerData:
             return ""
 
 
+def _canonicalize_no_stereo(smiles: str) -> str:
+    """
+    Remove stereochemistry and re-canonicalize through RDKit.
+    This ensures consistent canonical SMILES regardless of how the molecule was constructed.
+    String-only stereo removal can produce non-canonical SMILES.
+    """
+    no_stereo = remove_stereochemistry_from_smiles(smiles)
+    mol = Chem.MolFromSmiles(no_stereo)
+    if mol:
+        return Chem.MolToSmiles(mol, canonical=True)
+    return no_stereo  # Fallback to string version if parse fails
+
+
 class MonomerLibrary:
     def __init__(self):
         self.monomers = {}
         self.smiles_to_monomer = {}
         self.name_to_monomer = {}
         self.symbol_to_monomer = {}
+        # Hash indices for O(1) matching (built after loading)
+        self._smiles_index = {}         # canonical_smiles -> MonomerData
+        self._smiles_no_stereo_index = {}  # stereo-free_smiles -> MonomerData
 
     def load_from_helm_json(self, json_path: str) -> None:
         if not os.path.exists(json_path):
@@ -184,6 +211,9 @@ class MonomerLibrary:
                     successful += 1
             except Exception:
                 continue
+
+        # Build hash indices for O(1) matching
+        self._build_smiles_indices()
 
     def _parse_monomer(self, monomer_dict: dict):
         # IMPORTANT: Only load PEPTIDE monomers (amino acids)
@@ -232,101 +262,85 @@ class MonomerLibrary:
 
         return monomer
 
+    def _build_smiles_indices(self):
+        """
+        Pre-compute all possible capped SMILES for every monomer and build
+        hash indices for O(1) lookup. Called once after loading all monomers.
+
+        For each monomer with M R-groups, generates capped SMILES for all
+        possible R-group removal combinations (up to 2^M - 1 entries, typically 1-7).
+
+        Deduplicates monomers with identical SMILES+R-groups to avoid redundant
+        capping computations (important for large libraries with variants).
+        """
+        self._smiles_index = {}
+        self._smiles_no_stereo_index = {}
+
+        # Dedup: group monomers by (smiles, r_group_keys) to avoid recomputing
+        # identical capped forms for monomers with the same structure
+        seen_structures = {}  # (smiles, r_group_frozenset) -> list of capped entries
+
+        for symbol, monomer in self.monomers.items():
+            if monomer.r_group_count == 0:
+                continue
+
+            r_group_labels = list(monomer.r_groups.keys())
+            struct_key = (monomer.smiles, frozenset(monomer.r_groups.items()))
+
+            if struct_key in seen_structures:
+                # Reuse cached capped SMILES from an identical monomer
+                for capped_smiles, n_removed in seen_structures[struct_key]:
+                    key = (capped_smiles, n_removed)
+                    if key not in self._smiles_index:
+                        self._smiles_index[key] = monomer
+                    ns_canonical = _canonicalize_no_stereo(capped_smiles)
+                    if ns_canonical:
+                        ns_key = (ns_canonical, n_removed)
+                        if ns_key not in self._smiles_no_stereo_index:
+                            self._smiles_no_stereo_index[ns_key] = monomer
+                continue
+
+            # First time seeing this structure — compute capped SMILES
+            cached_entries = []
+
+            for n_removed in range(1, monomer.r_group_count + 1):
+                for removed_combo in combinations(r_group_labels, n_removed):
+                    removed_set = frozenset(removed_combo)
+                    capped_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
+
+                    if not capped_smiles:
+                        continue
+
+                    cached_entries.append((capped_smiles, n_removed))
+
+                    key = (capped_smiles, n_removed)
+                    if key not in self._smiles_index:
+                        self._smiles_index[key] = monomer
+
+                    ns_canonical = _canonicalize_no_stereo(capped_smiles)
+                    if ns_canonical:
+                        ns_key = (ns_canonical, n_removed)
+                        if ns_key not in self._smiles_no_stereo_index:
+                            self._smiles_no_stereo_index[ns_key] = monomer
+
+            seen_structures[struct_key] = cached_entries
+
     def find_monomer_by_fragment_smiles(self, fragment_smiles: str, num_connections: int):
         """
-        Find monomer by matching fragment SMILES with on-demand R-group removal.
-        
-        Args:
-            fragment_smiles: Canonical SMILES of the fragment  
-            num_connections: Number of connections this fragment has in the graph
-        
-        Returns:
-            MonomerData if match found, None otherwise
-            
-        Logic:
-            - Fragment with N connections → N R-groups were removed during fragmentation
-            - For monomer with M R-groups, try all C(M,N) combinations of which N R-groups were removed
-            - Generate SMILES for each combination on-demand (with caching)
-            
-        Example:
-            Fragment has 1 connection, monomer has R1, R2:
-            - Try removing R1 → check if SMILES matches
-            - Try removing R2 → check if SMILES matches
+        Find monomer by matching fragment SMILES. O(1) hash lookup.
         """
-        # Search through all monomers
-        for symbol, monomer in self.monomers.items():
-            # Skip if monomer doesn't have enough R-groups
-            if monomer.r_group_count < num_connections:
-                continue
-            
-            # Generate all combinations of num_connections R-groups that could have been removed
-            r_group_labels = list(monomer.r_groups.keys())
-            
-            # For each combination of R-groups that could have been removed
-            for removed_combo in combinations(r_group_labels, num_connections):
-                removed_set = frozenset(removed_combo)
-                
-                # Generate SMILES with these R-groups removed (lazy, cached)
-                candidate_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
-                
-                # Check if it matches the fragment (exact match only)
-                if candidate_smiles == fragment_smiles:
-                    return monomer
-        
-        return None
-    
+        return self._smiles_index.get((fragment_smiles, num_connections))
+
     def find_monomer_by_fragment_smiles_no_stereo(self, fragment_smiles: str, num_connections: int):
         """
         Find monomer by matching fragment SMILES WITHOUT stereochemistry.
-        Used only in recovery for handling poor quality input data.
-        
-        Uses molecular graph isomorphism to handle cases where RDKit generates 
-        different canonical SMILES for the same molecule.
-        
-        Args:
-            fragment_smiles: Canonical SMILES of the fragment  
-            num_connections: Number of connections this fragment has in the graph
-        
-        Returns:
-            MonomerData if match found, None otherwise
+        Used in recovery for handling poor quality input data. O(1) hash lookup.
         """
-        # Parse fragment molecule once (without stereochemistry)
-        fragment_no_stereo_smiles = remove_stereochemistry_from_smiles(fragment_smiles)
-        fragment_mol = Chem.MolFromSmiles(fragment_no_stereo_smiles)
-        if not fragment_mol:
+        ns_canonical = _canonicalize_no_stereo(fragment_smiles)
+        if not ns_canonical:
             return None
-        
-        # Search through all monomers
-        for symbol, monomer in self.monomers.items():
-            # Skip if monomer doesn't have enough R-groups
-            if monomer.r_group_count < num_connections:
-                continue
-            
-            # Generate all combinations of num_connections R-groups that could have been removed
-            r_group_labels = list(monomer.r_groups.keys())
-            
-            # For each combination of R-groups that could have been removed
-            for removed_combo in combinations(r_group_labels, num_connections):
-                removed_set = frozenset(removed_combo)
-                
-                # Generate SMILES with these R-groups removed (lazy, cached)
-                candidate_smiles = monomer.get_capped_smiles_for_removed_rgroups(removed_set)
-                
-                # Try string comparison first (fast path)
-                candidate_no_stereo = remove_stereochemistry_from_smiles(candidate_smiles)
-                
-                if candidate_no_stereo == fragment_no_stereo_smiles:
-                    return monomer
-                
-                # If string comparison fails, try molecular graph isomorphism (slower but more robust)
-                # This handles cases where RDKit generates different canonical SMILES for same molecule
-                candidate_mol = Chem.MolFromSmiles(candidate_no_stereo)
-                if candidate_mol and fragment_mol.HasSubstructMatch(candidate_mol) and candidate_mol.HasSubstructMatch(fragment_mol):
-                    # Both molecules are substructures of each other = they're the same
-                    if fragment_mol.GetNumAtoms() == candidate_mol.GetNumAtoms():
-                        return monomer
-        
-        return None
+
+        return self._smiles_no_stereo_index.get((ns_canonical, num_connections))
 
     def find_monomer_by_symbol(self, symbol: str):
         return self.symbol_to_monomer.get(symbol)

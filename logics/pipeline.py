@@ -129,7 +129,10 @@ def convert_molecules_batch(molecules: list, library_json: str = None, input_typ
             return [(False, "Library loading failed") for _ in molecules]
         
         print(f"Custom library loaded: {len(library.monomers)} monomers")
-        
+
+        # Build hash indices for O(1) matching
+        library._build_smiles_indices()
+
         # Create processor instances for this library
         processor = FragmentProcessor(library)
         matcher = MonomerMatcher(library)
@@ -213,7 +216,14 @@ def convert_molecules_batch(molecules: list, library_json: str = None, input_typ
             stereo_matched = processor.recover_unmatched_with_stereo_agnostic(graph, matcher)
             if stereo_matched > 0:
                 print(f"DEBUG: Stereo-agnostic recovery matched {stereo_matched} additional fragments")
-            
+
+            # Final pass: merge pairs of both-unmatched neighbor fragments
+            # with stereo-agnostic matching (handles split monomers like Phe_4Sdihydroorotamido)
+            for attempt in range(max_recovery_attempts):
+                had_changes = processor.recover_unmatched_by_merging_stereo_agnostic(graph, matcher)
+                if not had_changes:
+                    break
+
             if len(graph.nodes) > 0:
                 helm_notation = helm_generator.generate_helm_from_graph(graph)
                 results.append((True, helm_notation))

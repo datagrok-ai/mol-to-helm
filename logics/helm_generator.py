@@ -53,15 +53,11 @@ class HELMGenerator:
             return self._generate_simple_helm(graph)
         
         if len(cycles) == 1:
-            # Single cycle - check if there are standalone nodes attached
-            nodes_in_cycle = set(cycles[0])
-            standalone_nodes = [nid for nid in graph.nodes.keys() if nid not in nodes_in_cycle]
-            
-            if not standalone_nodes:
-                # Simple single-cycle peptide - use simple generator
-                return self._generate_simple_helm(graph)
-        
-        # Multi-chain structure detected (multiple cycles or cycle with attachments)
+            # Single cycle (with or without standalone branch nodes like 'ac')
+            # _generate_simple_helm handles branches correctly with proper R-group detection
+            return self._generate_simple_helm(graph)
+
+        # Multi-chain structure detected (multiple cycles)
         return self._generate_multi_chain_helm(graph, cycles)
     
     def _generate_simple_helm(self, graph: FragmentGraph) -> str:

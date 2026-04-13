@@ -1,44 +1,24 @@
 # MolToHelm
-Functionality for converting peptide molecules to HELM representation
+Converts peptide molecule structures (RDKit molecules) to HELM (Hierarchical Editing Language for Macromolecules) notation.
 
-## Description
-This project converts peptide molecule structures (RDKit molecules) to HELM (Hierarchical Editing Language for Macromolecules) notation. It supports both linear and cyclic peptides.
+## Capabilities
+- Linear peptides (100% accuracy on test set)
+- Cyclic peptides with head-to-tail connections (100% accuracy on test set)
+- Disulfide bridges (S-S bonds between Cys residues)
+- Branch/side-chain modifications (acetyl caps, etc.)
+- Multi-chain structures (BILN peptides - partial support)
+- Modified and non-standard amino acids (322 PEPTIDE monomers from HELM Core Library)
+- Accepts both molfile and SMILES input (auto-detection)
+- Custom monomer library support (pass JSON at runtime)
 
-## Setup Environment
+## Setup
 
 ### Prerequisites
-- Python 3.8 or higher
-- pip package manager
+- Python 3.8+
+- pip
 
 ### Installation
 
-#### Quick Setup Verification
-Before installation, you can verify your environment:
-
-**Windows:**
-```bash
-py verify_setup.py
-```
-
-**Linux/Mac:**
-```bash
-python verify_setup.py
-```
-
-#### Option 1: Using setup scripts (Easiest)
-
-**Windows:**
-```bash
-setup.bat
-```
-
-**Linux/Mac:**
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-#### Option 2: Manual installation with pip
 **Windows:**
 ```bash
 py -m pip install -r requirements.txt
@@ -49,83 +29,110 @@ py -m pip install -r requirements.txt
 pip install -r requirements.txt
 ```
 
-#### Option 3: Using conda
+Or use the setup scripts: `setup.bat` (Windows) / `./setup.sh` (Linux/Mac).
+
+Verify with:
 ```bash
-conda create -n mol-to-helm python=3.9
-conda activate mol-to-helm
-conda install -c conda-forge rdkit pandas numpy
+py verify_setup.py   # Windows
+python verify_setup.py  # Linux/Mac
 ```
 
 ## Project Structure
 ```
 mol-to-helm/
 ├── libraries/
-│   └── HELMCoreLibrary.json    # HELM monomer library
+│   └── HELMCoreLibrary.json       # HELM monomer library (322 peptide monomers)
 ├── logics/
-│   ├── main.py                 # Main test runner
-│   ├── pipeline.py             # Main conversion pipeline
-│   ├── monomer_library.py      # Monomer library management
-│   ├── fragment_processor.py   # Molecular fragment processing
-│   ├── monomer_matcher.py      # Fragment to monomer matching
-│   ├── helm_generator.py       # HELM notation generation
-│   └── fragment_graph.py       # Graph data structures
+│   ├── main.py                     # Test runner with HELM comparison
+│   ├── pipeline.py                 # Main conversion pipeline (entry point)
+│   ├── monomer_library.py          # Monomer library + R-group matching
+│   ├── monomer_matcher.py          # Fragment-to-monomer matching
+│   ├── fragment_processor.py       # Bond detection, fragmentation, recovery
+│   ├── fragment_graph.py           # Graph data structures (nodes, links, cycles)
+│   └── helm_generator.py           # HELM notation generation
+├── aggregated/
+│   ├── aggregate_logics.py         # Aggregation script for Datagrok
+│   └── mol_to_helm_aggregated.py   # Single-file output for Datagrok
 ├── test-sets/
-│   ├── HELM_LINEAR.csv         # Linear peptide test data
-│   ├── HELM_cyclic.csv         # Cyclic peptide test data
-│   └── BILN_W_HELM.csv         # Additional test data
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
+│   ├── HELM_LINEAR.csv             # Linear peptide tests (20 molecules)
+│   ├── HELM_cyclic.csv             # Cyclic peptide tests (41 molecules)
+│   ├── BILN_W_HELM.csv             # BILN peptide tests
+│   └── BILN_W_HELM_2.csv           # BILN peptide tests (5 molecules)
+├── requirements.txt
+├── DESCRIPTION.md                  # Detailed module documentation
+├── PROJECT_CONTEXT.md              # Architecture and design decisions
+└── README.md
 ```
 
 ## Usage
 
 ### Running Tests
-To test the conversion of linear and cyclic peptides:
-
-**Windows:**
 ```bash
 cd logics
-py main.py
+py main.py        # Windows
+python main.py    # Linux/Mac
 ```
 
-**Linux/Mac:**
-```bash
-cd logics
-python main.py
-```
-
-### Using in Your Code
+### API
 ```python
-from rdkit import Chem
 from pipeline import convert_molecules_batch
 
-# Load your molecule
-mol = Chem.MolFromSmiles("your_smiles_here")
+# From molfiles
+results = convert_molecules_batch([molfile_string], input_type="molfile")
 
-# Convert molecule to molfile format
-molfile = Chem.MolToMolBlock(mol)
+# From SMILES
+results = convert_molecules_batch(["CC(N)C(=O)NCC(=O)O"], input_type="smiles")
 
-# Convert to HELM notation
-results = convert_molecules_batch([molfile], is_cyclic=False)
-success, helm_notation = results[0]
+# Auto-detect format
+results = convert_molecules_batch([mol_string])
 
-if success:
-    print(helm_notation)
-else:
-    print("Conversion failed")
+# With custom library
+with open("my_library.json") as f:
+    results = convert_molecules_batch([mol_string], library_json=f.read())
+
+# Each result is (success: bool, helm_notation: str)
+for success, helm in results:
+    if success:
+        print(helm)
 ```
 
-## Features
-- Convert RDKit molecules to HELM notation
-- Support for linear peptides
-- Support for cyclic peptides
-- Monomer library based on HELM Core Library
-- Fragment detection and matching
+### Pipeline Flow
+```
+Input (molfile/SMILES)
+  -> Parse molecule (RDKit)
+  -> Detect cleavable bonds (peptide + disulfide SMARTS)
+  -> Fragment molecule at bonds
+  -> Build FragmentGraph (nodes + links)
+  -> Match each fragment to library monomer (R-group combinatorics)
+  -> Recovery: merge unmatched fragments with neighbors
+  -> Recovery: stereo-agnostic matching for poor-quality input
+  -> Recovery: merge pairs of unmatched fragments (split monomers)
+  -> Generate HELM notation from graph
+Output: HELM string
+```
+
+## Test Results
+| Test Set | Result |
+|---|---|
+| Linear Peptides | 20/20 (100%) |
+| Cyclic Peptides | 41/41 (100%) |
+| BILN Peptides | 1/5 (20%) |
+
+## Performance
+
+Matching uses a pre-built SMILES hash index for O(1) lookup per fragment. Per-molecule time is constant regardless of library size.
+
+| Library | Parse | Index Build | Per Molecule |
+|---|---|---|---|
+| 322 (HELMCore) | 20ms | 100ms | 8ms |
+| 1,919 (HELMCore+Other) | 184ms | 2.0s | 51ms |
+
+Stereo-agnostic index uses RDKit re-canonicalization (not string manipulation) to ensure consistent SMILES regardless of how molecules were constructed. Index building deduplicates monomers with identical SMILES+R-groups.
 
 ## Requirements
-- rdkit>=2023.3.1
-- pandas>=2.0.0
-- numpy>=1.24.0
+- rdkit >= 2023.3.1
+- pandas >= 2.0.0
+- numpy >= 1.24.0
 
 ## License
 See LICENSE file for details.
