@@ -490,72 +490,111 @@ class FragmentProcessor:
 
     def _find_staple_sidechain_bonds(self, mol, existing_bonds):
         """
-        Find bonds to cleave in staple macrocycles.
+        Find non-backbone bonds to cleave in macrocycles.
 
-        Detects large macrocycles (>10 atoms) that contain both quaternary
-        alpha-methyl carbons (staple monomers like R8, S5) and non-peptide
-        linker bonds. Cleaves at C=C double bonds within these macrocycles,
-        which are the signature of olefin metathesis (RCMtrans/RCMcis) linkers.
-        Also cleaves at C-S thioether bonds for FC01-type linkers.
+        Handles three types of macrocyclic cross-links:
+        1. RCMtrans/RCMcis (stapled peptides): C=C double bond in the linker.
+           Cleaves one hop away on each side to keep the correct R3 chain length.
+        2. FC01-type (thioether staples): C-S bonds in the linker.
+        3. Alkyl cross-links (bi-cyclic peptides): pure C-C chains connecting
+           two amino acid side chains (R3-R3). Detected by finding non-backbone
+           segments in large macrocycles and cleaving at their midpoint.
         """
         ring_info = mol.GetRingInfo()
         large_rings = [set(ring) for ring in ring_info.AtomRings() if len(ring) > 10]
         if not large_rings:
             return []
 
-        # Quick check: must have quaternary alpha-methyl C in a large ring
-        quat_alpha = Chem.MolFromSmarts('[N;X2,X3]-[C;X4;H0](-[C;X3](=[O;X1]))-[CH3]')
-        if not quat_alpha or not mol.HasSubstructMatch(quat_alpha):
-            return []
-
         existing_atom_pairs = set()
         for a1, a2, _ in existing_bonds:
             existing_atom_pairs.add((min(a1, a2), max(a1, a2)))
+        # Also track existing bond atoms for backbone detection
+        existing_bond_atoms = set()
+        for a1, a2, _ in existing_bonds:
+            existing_bond_atoms.add(a1)
+            existing_bond_atoms.add(a2)
 
         additional_bonds = []
         seen = set()
 
         for ring in large_rings:
+            ring_list = list(ring)
+
+            # --- Type 1: C=C double bonds (RCMtrans/RCMcis) ---
+            # Only if molecule has quaternary alpha-methyl C (staple monomer signature)
+            quat_alpha = Chem.MolFromSmarts('[N;X2,X3]-[C;X4;H0](-[C;X3](=[O;X1]))-[CH3]')
+            has_quat = quat_alpha and mol.HasSubstructMatch(quat_alpha)
+            if has_quat:
+                for bond in mol.GetBonds():
+                    a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+                    if a1 not in ring or a2 not in ring:
+                        continue
+                    if (bond.GetBondTypeAsDouble() >= 2 and
+                            mol.GetAtomWithIdx(a1).GetAtomicNum() == 6 and
+                            mol.GetAtomWithIdx(a2).GetAtomicNum() == 6):
+                        for cc_atom_idx in (a1, a2):
+                            other_cc = a2 if cc_atom_idx == a1 else a1
+                            cc_atom = mol.GetAtomWithIdx(cc_atom_idx)
+                            for nbr in cc_atom.GetNeighbors():
+                                nbr_idx = nbr.GetIdx()
+                                if nbr_idx == other_cc or nbr_idx not in ring:
+                                    continue
+                                for nbr2 in nbr.GetNeighbors():
+                                    nbr2_idx = nbr2.GetIdx()
+                                    if nbr2_idx == cc_atom_idx or nbr2_idx not in ring:
+                                        continue
+                                    pair = (min(nbr_idx, nbr2_idx), max(nbr_idx, nbr2_idx))
+                                    if pair not in existing_atom_pairs and pair not in seen:
+                                        seen.add(pair)
+                                        additional_bonds.append((nbr_idx, nbr2_idx, LinkageType.UNKNOWN))
+
+            # --- Type 2: C-S thioether bonds (FC01) ---
+            # Only true thioethers (S bonded to C on both sides), NOT disulfide-adjacent
             for bond in mol.GetBonds():
-                a1 = bond.GetBeginAtomIdx()
-                a2 = bond.GetEndAtomIdx()
+                a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
                 if a1 not in ring or a2 not in ring:
                     continue
-
-                # For C=C double bonds (RCMtrans/RCMcis): cleave the single bonds
-                # one hop away on each side. RCMtrans structure: ...R3chain-CH2-C=C-CH2-R3chain...
-                # Cleaving at CH2-R3chain boundaries keeps the correct R3 chain length.
-                if (bond.GetBondTypeAsDouble() >= 2 and
-                        mol.GetAtomWithIdx(a1).GetAtomicNum() == 6 and
-                        mol.GetAtomWithIdx(a2).GetAtomicNum() == 6):
-                    # For each C=C atom, find its other ring neighbor and cleave that bond
-                    for cc_atom_idx in (a1, a2):
-                        other_cc = a2 if cc_atom_idx == a1 else a1
-                        cc_atom = mol.GetAtomWithIdx(cc_atom_idx)
-                        for nbr in cc_atom.GetNeighbors():
-                            nbr_idx = nbr.GetIdx()
-                            if nbr_idx == other_cc or nbr_idx not in ring:
-                                continue
-                            # nbr is the CH2 between C=C and R3 chain
-                            # Find nbr's other ring neighbor (the R3 chain atom)
-                            for nbr2 in nbr.GetNeighbors():
-                                nbr2_idx = nbr2.GetIdx()
-                                if nbr2_idx == cc_atom_idx or nbr2_idx not in ring:
-                                    continue
-                                pair = (min(nbr_idx, nbr2_idx), max(nbr_idx, nbr2_idx))
-                                if pair not in existing_atom_pairs and pair not in seen:
-                                    seen.add(pair)
-                                    additional_bonds.append((nbr_idx, nbr2_idx, LinkageType.UNKNOWN))
-
-                # Cleave C-S thioether bonds (FC01-type linker)
-                atom1 = mol.GetAtomWithIdx(a1)
-                atom2 = mol.GetAtomWithIdx(a2)
-                if ((atom1.GetAtomicNum() == 6 and atom2.GetAtomicNum() == 16) or
-                        (atom1.GetAtomicNum() == 16 and atom2.GetAtomicNum() == 6)):
+                at1, at2 = mol.GetAtomWithIdx(a1), mol.GetAtomWithIdx(a2)
+                if ((at1.GetAtomicNum() == 6 and at2.GetAtomicNum() == 16) or
+                        (at1.GetAtomicNum() == 16 and at2.GetAtomicNum() == 6)):
+                    s_atom = at2 if at2.GetAtomicNum() == 16 else at1
+                    # Skip if S is bonded to another S (disulfide bridge path)
+                    if any(n.GetAtomicNum() == 16 for n in s_atom.GetNeighbors()):
+                        continue
                     pair = (min(a1, a2), max(a1, a2))
                     if pair not in existing_atom_pairs and pair not in seen:
                         seen.add(pair)
                         additional_bonds.append((a1, a2, LinkageType.UNKNOWN))
+
+        # --- Type 3: Alkyl cross-link paths (bi-cyclic R3-R3) ---
+        # Find pairs of alpha-C atoms connected by pure carbon chains (no N/O/S
+        # in the path). These are R3-R3 cross-links between different cycles.
+        # Cleave at the midpoint of each such chain.
+        alpha_c_pat = Chem.MolFromSmarts('[N]-[C;X4]-[C;X3](=[O])')
+        if alpha_c_pat:
+            ac_matches = mol.GetSubstructMatches(alpha_c_pat)
+            alpha_c_set = list(set(m[1] for m in ac_matches))
+            for i, ac1 in enumerate(alpha_c_set):
+                for ac2 in alpha_c_set[i + 1:]:
+                    path = Chem.GetShortestPath(mol, ac1, ac2)
+                    if not path or len(path) < 4 or len(path) > 12:
+                        continue
+                    # All middle atoms must be C with no N/O/S neighbors
+                    middle_ok = True
+                    for mid_idx in path[1:-1]:
+                        atom = mol.GetAtomWithIdx(mid_idx)
+                        if atom.GetAtomicNum() != 6:
+                            middle_ok = False
+                            break
+                        if any(n.GetAtomicNum() in (7, 8, 16) for n in atom.GetNeighbors()):
+                            middle_ok = False
+                            break
+                    if middle_ok:
+                        mid = len(path) // 2
+                        pair = (min(path[mid - 1], path[mid]), max(path[mid - 1], path[mid]))
+                        if pair not in existing_atom_pairs and pair not in seen:
+                            seen.add(pair)
+                            additional_bonds.append((path[mid - 1], path[mid], LinkageType.UNKNOWN))
 
         return additional_bonds
 
