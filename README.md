@@ -138,3 +138,5 @@ Stereo-agnostic index uses RDKit re-canonicalization (not string manipulation) t
 
 ## License
 See LICENSE file for details.
+
+P.S. This repo does not include another monomer library with 1,597 non-PEPTIDE monomers due to its public availability. if needed, source it from developer. 
